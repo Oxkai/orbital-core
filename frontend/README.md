@@ -1,8 +1,8 @@
-# Orbital · UHI — Frontend
+# Orbital — Frontend
 
-The web app for **Orbital**, an N-asset stableswap built as a **Uniswap v4 hook**, deployed on **Unichain Sepolia (chainId 1301)**. Swap, provide liquidity, and inspect the live pool — wired directly to the on-chain hook.
+The web app for **Orbital**, an N-asset stableswap built as a **Uniswap v4 hook**, deployed on **Monad testnet (chainId 10143)**. Swap, provide liquidity, and inspect the live pool — wired directly to the on-chain hook.
 
-**Live → https://orbital-hook.vercel.app/**
+**Live → https://orbital-hook.vercel.app/**  ·  Hook [`0x63deB95a…6A88`](https://testnet.monadscan.com/address/0x63deB95aFa4EED08271831750059CD4e42e76A88)
 
 Contracts live in [`../orbitalHook`](../orbitalHook). The deployed addresses the app talks to are in [`lib/contracts.ts`](lib/contracts.ts).
 
@@ -12,7 +12,7 @@ Contracts live in [`../orbitalHook`](../orbitalHook). The deployed addresses the
 |---|---|
 | Framework | Next.js 16 (App Router) |
 | UI | React 19 |
-| Chain | wagmi 3 + viem 2 (Unichain Sepolia) |
+| Chain | wagmi 3 + viem 2 (Monad testnet) |
 | Styling | Tailwind CSS 4 + inline design tokens |
 | Math | KaTeX |
 | Charts / 3D | Recharts · three.js |
@@ -27,13 +27,13 @@ npm run build
 npm run lint
 ```
 
-Connect a wallet on **Unichain Sepolia (1301)**. The Nav prompts a network switch if you're on the wrong chain.
+Connect a wallet on **Monad testnet (10143)**. Get test MON from <https://faucet.monad.xyz>. The Nav prompts a network switch if you're on the wrong chain.
 
 ## Environment
 
 | Var | Required | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_RPC_URL` | optional | Private Unichain RPC. Falls back to the public `https://sepolia.unichain.org` (rate-limited; caps `getLogs` at 100 blocks). |
+| `NEXT_PUBLIC_RPC_URL` | optional | Private Monad RPC. Falls back to the public `https://testnet-rpc.monad.xyz`. |
 
 Copy `.env.example` → `.env.local` and fill in if you have one.
 
@@ -41,7 +41,7 @@ Copy `.env.example` → `.env.local` and fill in if you have one.
 
 Deploy this folder as its own Vercel project:
 
-1. **Import** the `Oxkai/Orbital.Hook` repo into Vercel.
+1. **Import** the `Oxkai/orbital-core` repo into Vercel.
 2. Set **Root Directory** to `frontend`.
 3. Framework preset auto-detects **Next.js** (also pinned in `vercel.json`).
 4. (Optional) add `NEXT_PUBLIC_RPC_URL` as an env var.
@@ -67,9 +67,9 @@ components/
   Tex.tsx                 KaTeX formula renderer
 lib/
   contracts.ts            deployed addresses + ABIs + PoolKey helper
-  wagmi.ts                Unichain Sepolia chain config
+  wagmi.ts                Monad testnet chain config
   hooks/                  usePool · usePositions · useTokenBalances · useTransactions · useVolume24h
 constants/                color themes (dark/light) + type scale
 ```
 
-> Research deployment on Unichain Sepolia — not audited, not production.
+> Research deployment on Monad testnet — not audited, not production.

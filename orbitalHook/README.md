@@ -32,7 +32,7 @@ The hook keeps the pool as a point on an N-sphere and consolidates every LP tick
 
 ## Status
 
-v1 — research artifact, not audited, not production. Working end-to-end (121 tests) and live on Unichain Sepolia.
+v1 — research artifact, not audited, not production. Working end-to-end (121 tests) and live on Monad testnet.
 
 **Engine**
 - [x] Asset registry — N tokens per pool, sorted, unique, immutable
@@ -51,7 +51,7 @@ v1 — research artifact, not audited, not production. Working end-to-end (121 t
 **Safety & ops**
 - [x] Admin pause — Ownable2Step + Pausable
 - [x] Deploy + seed + simulation scripts; CREATE2-mined hook
-- [x] Live + seeded on Unichain Sepolia (121 tests passing)
+- [x] Live + seeded on Monad testnet (121 tests passing)
 
 **Deferred to v2**
 - [ ] Exit during a depeg (burns are blocked while any tick is on boundary — symmetric with mints — pending per-tick reserve attribution; positions withdraw once the coin re-pegs and the tick recovers to interior)
@@ -158,29 +158,29 @@ collect(uint256 tickIdx)                                                 // → 
 
 ```bash
 forge script script/Deploy.s.sol \
-  --rpc-url https://sepolia.unichain.org --broadcast --slow \
+  --rpc-url monad_testnet --broadcast --slow \
   --private-key $PRIVATE_KEY
 ```
 
-`Deploy.s.sol` mines the hook address (`HookMiner` from `lib/uniswap-hooks`), deploys the four mock tokens, initializes the 6 pair pools, and seeds tiered liquidity across depeg bounds 0.95 / 0.90 / 0.85 / 0.80 (~$10M rInt). The deep, layered seed keeps quotes near 1:1 for ordinary flow, while the segmenting solver handles tick crossings when a swap is large enough to reach a boundary.
+`Deploy.s.sol` mines the hook address (`HookMiner` from `lib/uniswap-hooks`), deploys the four mock tokens, initializes the 6 pair pools, and seeds tiered liquidity across depeg bounds 0.999 / 0.995 / 0.99 / 0.98. It resolves the `PoolManager` per chain: canonical v4 on Monad mainnet and Unichain Sepolia, the existing self-deployed instance on Monad testnet, and a fresh one on local anvil.
 
 ---
 
-## Deployed — Unichain Sepolia (chainId 1301)
+## Deployed — Monad testnet (chainId 10143)
 
-Uniswap v4 is canonically deployed on Unichain, so the hook plugs into the official `PoolManager`, `SwapRouter`, and `V4Quoter`.
+Monad testnet has no canonical Uniswap v4, so the stack self-deploys a `PoolManager` (via hookmate) plus a v4 `SwapRouter` and `V4Quoter` pointed at it. On Monad mainnet the same script picks up the canonical v4 `PoolManager` instead.
 
 | Contract | Address |
 |---|---|
-| OrbitalHook | [`0x08E32551Cf10f042721E1387e7Be8538beC02A88`](https://sepolia.uniscan.xyz/address/0x08E32551Cf10f042721E1387e7Be8538beC02A88) |
-| PoolManager (v4, canonical) | `0x00B036B58a818B1BC34d502D3fE730Db729e62AC` |
-| V4Quoter (canonical) | `0x56DcD40A3F2D466F48E7F48BdBe5cc9b92aE4472` |
-| SwapRouter (v4) | `0xb974DE781ec4bCf09d91Db13A3aF74d14FfE7540` |
+| OrbitalHook | [`0x63deB95aFa4EED08271831750059CD4e42e76A88`](https://testnet.monadscan.com/address/0x63deB95aFa4EED08271831750059CD4e42e76A88) |
+| PoolManager (v4, self-deployed) | `0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7` |
+| V4Quoter | `0x3f53c9ae1ae5D34D8A89986ea456da8e69916725` |
+| SwapRouter (v4) | `0xC30819b8ac12B5d12751b83cFfebD6F0bFa0b53E` |
 | Permit2 (canonical) | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
-| USDC (mock) | `0x26301b1f7Ec55Cea35111b79E1Df986c314B4a93` |
-| USDT (mock) | `0x37FC8Eade109847a5CA65cf25A7Cf8a1d003fEEd` |
-| DAI (mock) | `0x35ff498cE5FC23Ba5536044F8358C194386c9832` |
-| FRAX (mock) | `0x76b1B6078f392Ef3101f7b01E7B593aB1BeA9d6b` |
+| USDC (mock) | `0xD69710c36246972e8e0543ACeb397209f75E8298` |
+| USDT (mock) | `0x6ba8eD116B34AD23E8Ad936cf60A7BAa33F8FD1F` |
+| DAI (mock) | `0xA105c458C0e88d88eE3C55B2cae711C13631d67e` |
+| FRAX (mock) | `0x94B5be428FCC1000FdBbc556fE468310f556126d` |
 | Admin / owner | `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39` |
 
-Four mock 18-decimal stablecoins → 6 pair pools registered against the hook → tiered seed across 4 tiers (depeg bounds 0.95 / 0.90 / 0.85 / 0.80, ~$10M rInt) → `SeedActivity` runs a swap wave and adds a 5th tick. Live state: **~$24M TVL across 5 ticks, all interior, kBound = 0**. The hook address suffix `...02A88` encodes its permission flags (CREATE2-mined).
+Four mock 18-decimal stablecoins → 6 pair pools registered against the hook → tiered seed across 4 tiers (depeg bounds 0.999 / 0.995 / 0.99 / 0.98). Live state: **~$20M of real capital across 4 ticks, all interior, kBound = 0**, supporting an interior radius of **2.25e9** — about 225x what the same capital buys full-range. The hook address suffix `...6A88` encodes its permission flags (CREATE2-mined).
