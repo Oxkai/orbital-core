@@ -4,9 +4,11 @@
 
 A Uniswap v4 hook that turns a single pool into an N-asset stablecoin AMM. All the stablecoins (USDC, USDT, DAI, FRAX) share one reserve book inside the hook, which swaps them on the Orbital sphere/torus curve instead of Uniswap's constant-product math. The result is concentrated liquidity for a whole basket of dollars, running on top of v4.
 
-> **UHI9 theme: Impermanent Loss & Yield Systems.** Orbital is built to reduce impermanent loss for stablecoin LPs. Liquidity concentrated near the peg keeps IL close to zero while earning more fees per dollar, and if a coin breaks its peg the pool fences it off automatically, capping the tail loss that drains Curve-style stable LPs.
+> **Impermanent loss and yield.** Orbital is built to reduce impermanent loss for stablecoin LPs. Liquidity concentrated near the peg keeps IL close to zero while earning more fees per dollar, and if a coin breaks its peg the pool fences it off automatically, capping the tail loss that drains Curve-style stable LPs.
 
-Live app → <https://orbital-hook.vercel.app/> · Unichain Sepolia · 121 tests passing
+Live on **Monad testnet** · 121 tests passing
+
+> **Provenance.** The core hook and math libraries were originally built by us for UHI9 ([Oxkai/Orbital.Hook](https://github.com/Oxkai/Orbital.Hook), May to June 2026). This repo is the Monad line of work: chain-aware deployment, the live Monad testnet stack, and everything that follows.
 
 ---
 
@@ -214,7 +216,32 @@ UHI/
 
 ---
 
-## Deployed on Unichain Sepolia (chainId 1301)
+## Deployed on Monad testnet (chainId 10143)
+
+Monad has no canonical Uniswap v4 deployment yet, so the script deploys its own `PoolManager` via hookmate and registers the six pair pools against it. On Monad mainnet (chainId 143) the same script picks up the canonical v4 `PoolManager` at `0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e` instead.
+
+| Contract | Address |
+|---|---|
+| [OrbitalHook](orbitalHook/src/OrbitalHook.sol) | `0x4676D3dec853B518110702d90E5f43CF803C2a88` |
+| PoolManager (v4, self-deployed) | `0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7` |
+| USDC (mock) | `0xa854E3ee9eFa1936034dE51CCD6e6fB66F4309cF` |
+| USDT (mock) | `0xaF9Bc1C4a47860D970BD20472776EFE24526660d` |
+| DAI (mock) | `0xbBd1DD6CEA4E7D114439DB527a99d0Aae789203b` |
+| FRAX (mock) | `0x081588D70E9cC742Ab99bb80c2370f501E791531` |
+| Admin / owner | `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39` |
+
+Seeded with **$20M TVL across 4 ticks** at depeg bounds 0.95 / 0.90 / 0.85 / 0.80, all interior. All six pair pools (`USDC/USDT`, `USDC/DAI`, `USDC/FRAX`, `USDT/DAI`, `USDT/FRAX`, `DAI/FRAX`) share the one engine state.
+
+Redeploy with:
+
+```bash
+cd orbitalHook
+forge script script/Deploy.s.sol --rpc-url monad_testnet --private-key $PRIVATE_KEY --broadcast --slow
+```
+
+---
+
+## Previously deployed on Unichain Sepolia (chainId 1301)
 
 Uniswap v4 is canonically deployed on Unichain, so the hook plugs into the official `PoolManager`, `SwapRouter`, and `V4Quoter` rather than a self-hosted stack.
 
