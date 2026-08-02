@@ -7,7 +7,7 @@ import { type Address } from "viem";
 // pointed at that PoolManager. Permit2 is the canonical singleton, already
 // present on Monad testnet at the same address as every other chain.
 
-export const HOOK_ADDRESS    = "0x4676D3dec853B518110702d90E5f43CF803C2a88" as Address; // OrbitalHook (USDC/USDT/DAI/FRAX)
+export const HOOK_ADDRESS    = "0x63deB95aFa4EED08271831750059CD4e42e76A88" as Address; // OrbitalHook (USDC/USDT/DAI/FRAX)
 export const POOL_MANAGER    = "0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7" as Address; // self-deployed v4 PoolManager
 export const SWAP_ROUTER     = "0xC30819b8ac12B5d12751b83cFfebD6F0bFa0b53E" as Address; // v4Router04
 export const QUOTER_ADDRESS  = "0x3f53c9ae1ae5D34D8A89986ea456da8e69916725" as Address; // V4Quoter
@@ -24,10 +24,10 @@ export const ROUTER_ADDRESS  = SWAP_ROUTER;
 // Registered assets, named by symbol. The hook internally stores them
 // sorted-ascending by address; the frontend looks them up via TOKEN_META.
 export const TOKEN_ADDRESSES = {
-  USDC: "0xa854E3ee9eFa1936034dE51CCD6e6fB66F4309cF" as Address,
-  USDT: "0xaF9Bc1C4a47860D970BD20472776EFE24526660d" as Address,
-  DAI:  "0xbBd1DD6CEA4E7D114439DB527a99d0Aae789203b" as Address,
-  FRAX: "0x081588D70E9cC742Ab99bb80c2370f501E791531" as Address,
+  USDC: "0xD69710c36246972e8e0543ACeb397209f75E8298" as Address,
+  USDT: "0x6ba8eD116B34AD23E8Ad936cf60A7BAa33F8FD1F" as Address,
+  DAI:  "0xA105c458C0e88d88eE3C55B2cae711C13631d67e" as Address,
+  FRAX: "0x94B5be428FCC1000FdBbc556fE468310f556126d" as Address,
 } as const;
 
 // Pool fee in hundredths of a bip (matches the hook's immutable `fee`).
@@ -37,16 +37,16 @@ export const POOL_KEY_LP_FEE: number = 0;
 
 // Block the OrbitalHook was deployed at on Monad testnet — event scanners
 // start here instead of genesis.
-export const DEPLOY_BLOCK = 50191823n;
+export const DEPLOY_BLOCK = 50202178n;
 
 // ─── Token metadata (static) ──────────────────────────────────────────────────
 // Keys are lowercased token addresses; values are display metadata.
 
 export const TOKEN_META: Record<string, { symbol: string; name: string; color: string; decimals: number }> = {
-  "0xa854e3ee9efa1936034de51ccd6e6fb66f4309cf": { symbol: "USDC", name: "USD Coin",       color: "#2775CA", decimals: 18 },
-  "0xaf9bc1c4a47860d970bd20472776efe24526660d": { symbol: "USDT", name: "Tether USD",     color: "#26A17B", decimals: 18 },
-  "0xbbd1dd6cea4e7d114439db527a99d0aae789203b": { symbol: "DAI",  name: "Dai Stablecoin",  color: "#F5AC37", decimals: 18 },
-  "0x081588d70e9cc742ab99bb80c2370f501e791531": { symbol: "FRAX", name: "Frax",            color: "#BFBFBF", decimals: 18 },
+  "0xd69710c36246972e8e0543aceb397209f75e8298": { symbol: "USDC", name: "USD Coin",       color: "#2775CA", decimals: 18 },
+  "0x6ba8ed116b34ad23e8ad936cf60a7baa33f8fd1f": { symbol: "USDT", name: "Tether USD",     color: "#26A17B", decimals: 18 },
+  "0xa105c458c0e88d88ee3c55b2cae711c13631d67e": { symbol: "DAI",  name: "Dai Stablecoin",  color: "#F5AC37", decimals: 18 },
+  "0x94b5be428fcc1000fdbbc556fe468310f556126d": { symbol: "FRAX", name: "Frax",            color: "#BFBFBF", decimals: 18 },
 };
 
 // ─── PoolKey ──────────────────────────────────────────────────────────────────

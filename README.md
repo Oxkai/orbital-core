@@ -222,15 +222,28 @@ Monad has no canonical Uniswap v4 deployment yet, so the script deploys its own 
 
 | Contract | Address |
 |---|---|
-| [OrbitalHook](orbitalHook/src/OrbitalHook.sol) | `0x4676D3dec853B518110702d90E5f43CF803C2a88` |
+| [OrbitalHook](orbitalHook/src/OrbitalHook.sol) | `0x63deB95aFa4EED08271831750059CD4e42e76A88` |
 | PoolManager (v4, self-deployed) | `0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7` |
-| USDC (mock) | `0xa854E3ee9eFa1936034dE51CCD6e6fB66F4309cF` |
-| USDT (mock) | `0xaF9Bc1C4a47860D970BD20472776EFE24526660d` |
-| DAI (mock) | `0xbBd1DD6CEA4E7D114439DB527a99d0Aae789203b` |
-| FRAX (mock) | `0x081588D70E9cC742Ab99bb80c2370f501E791531` |
+| USDC (mock) | `0xD69710c36246972e8e0543ACeb397209f75E8298` |
+| USDT (mock) | `0x6ba8eD116B34AD23E8Ad936cf60A7BAa33F8FD1F` |
+| DAI (mock) | `0xA105c458C0e88d88eE3C55B2cae711C13631d67e` |
+| FRAX (mock) | `0x94B5be428FCC1000FdBbc556fE468310f556126d` |
 | Admin / owner | `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39` |
 
-Seeded with **$20M TVL across 4 ticks** at depeg bounds 0.95 / 0.90 / 0.85 / 0.80, all interior. All six pair pools (`USDC/USDT`, `USDC/DAI`, `USDC/FRAX`, `USDT/DAI`, `USDT/FRAX`, `DAI/FRAX`) share the one engine state.
+Seeded with **~$20M of real capital across 4 ticks** at depeg bounds 0.999 / 0.995 / 0.99 / 0.98, all interior. Because the ticks are concentrated, that capital supports an interior radius of **2.25e9**, roughly 225x what the same dollars would buy full-range.
+
+### Measured slippage (live, via V4Quoter)
+
+| swap in | slippage | full-range equivalent |
+|---|---|---|
+| 1,000 | 0.0100% | 0.020% |
+| 10,000 | 0.0104% | 0.200% |
+| 100,000 | **0.0145%** | 1.961% |
+| 1,000,000 | **0.0545%** | 16.667% |
+
+The 0.0100% floor is the 1bp pool fee. Pure price impact on a $100k swap is 0.0045%.
+
+**How the concentration works.** An LP funds only `xBase - xMin`: the reserves between the equal-price point and the level where their tick hits its depeg bound. The curve is credited the full `xBase`, and `virtualOffset` carries the difference. The unfunded portion is never callable, because the tick crosses to boundary at `xMin` and stops trading — the same virtual-reserve argument behind Uniswap v3. `reserves[]` remains the real, custodied balance, so pool solvency is unaffected. All six pair pools (`USDC/USDT`, `USDC/DAI`, `USDC/FRAX`, `USDT/DAI`, `USDT/FRAX`, `DAI/FRAX`) share the one engine state.
 
 Redeploy with:
 
