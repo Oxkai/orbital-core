@@ -1,0 +1,20 @@
+# Foundry build artifacts
+cache/
+out/
+.forge-snapshots/
+
+# Broadcast logs — local-anvil/testnet only at v1, no retention needed.
+# Remove this rule + the parent UHI/.gitignore rule when retaining mainnet logs.
+broadcast/
+
+# Env / secrets
+.env
+.env.local
+
+# OS / editor cruft
+.DS_Store
+.idea/
+*.swp
+
+# Node (in case any tooling lands here later)
+node_modules/

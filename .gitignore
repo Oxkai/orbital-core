@@ -1,0 +1,39 @@
+# OS / editor cruft
+.DS_Store
+.idea/
+*.swp
+
+# Personal planning / scratch notes — not for the repo
+todo.md
+req.md
+submission.md
+other
+
+# Env / secrets
+.env
+.env.local
+
+# Node (in case any tooling lands here later)
+node_modules/
+
+# Foundry build artifacts under the hook project
+orbitalHook/cache/
+orbitalHook/out/
+orbitalHook/broadcast/
+orbitalHook/.forge-snapshots/
+
+# Future frontend build output
+frontend/node_modules/
+frontend/.next/
+frontend/.vercel/
+frontend/dist/
+frontend/build/
+
+# Frontend cruft / not shipped
+frontend/design system inspo/
+frontend/undefined/
+frontend/components.webp
+frontend/pending.md
+frontend/ss/
+frontend/*.tsbuildinfo
+frontend/**/*.cpuprofile
