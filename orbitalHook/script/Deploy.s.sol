@@ -80,9 +80,7 @@ contract DeployScript is Script {
         // 1) v4 PoolManager + Permit2 — reuse existing infra if present, so a
         //    redeploy only creates fresh tokens + hook + pools (and avoids a
         //    CREATE2 collision on the deterministic PoolManager address).
-        // Canonical Uniswap v4 PoolManager on Unichain Sepolia.
-        // Source: https://developers.uniswap.org/contracts/v4/deployments
-        address knownPM = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
+        address knownPM = _canonicalPoolManager();
         IPoolManager poolManager = knownPM.code.length > 0
             ? IPoolManager(knownPM)
             : IPoolManager(V4PoolManagerDeployer.deploy(msg.sender));
@@ -110,6 +108,19 @@ contract DeployScript is Script {
         _seedTiers(hook, assets);
 
         vm.stopBroadcast();
+    }
+
+    /// @notice Canonical Uniswap v4 PoolManager for the current chain, or
+    ///         `address(0)` where v4 isn't deployed yet — the caller then falls
+    ///         back to deploying its own PoolManager via hookmate.
+    /// @dev    Source: https://developers.uniswap.org/contracts/v4/deployments
+    function _canonicalPoolManager() internal view returns (address) {
+        // Monad mainnet — v4 is live, so the hook plugs into real infra.
+        if (block.chainid == 143) return 0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e;
+        // Unichain Sepolia.
+        if (block.chainid == 1301) return 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
+        // Monad testnet (10143) and local anvil have no canonical v4 — self-deploy.
+        return address(0);
     }
 
     function _deployTokens() internal returns (Currency[] memory sorted) {
