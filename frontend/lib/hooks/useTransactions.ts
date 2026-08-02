@@ -5,10 +5,16 @@ import { usePublicClient } from "wagmi";
 import { parseAbiItem, type Address, type AbiEvent } from "viem";
 import { POOL_ADDRESSES, TOKEN_META, DEPLOY_BLOCK } from "@/lib/contracts";
 
-// Wide ranges work on a dedicated RPC (NEXT_PUBLIC_RPC_URL → Alchemy). The
-// public node caps eth_getLogs at 100 blocks; Alchemy handles 10k comfortably,
-// which is the whole reason this used to crawl.
-const CHUNK = 10_000n;
+// Monad's public RPC rejects any eth_getLogs wider than a 100-block range, so
+// 100 is the safe default. A dedicated endpoint usually allows far more — set
+// NEXT_PUBLIC_LOG_CHUNK to widen it and the scan gets proportionally faster.
+const CHUNK = BigInt(process.env.NEXT_PUBLIC_LOG_CHUNK ?? 100);
+
+// With a 100-block chunk, walking back to the deploy block would be hundreds of
+// sequential round-trips on a pool with little history. Bound each scan and let
+// `loadMore` continue from the cursor instead of blocking the first paint.
+const MAX_CHUNKS_PER_SCAN = 40;
+
 const PAGE_SIZE = 20;
 const POLL_MS = 15_000;
 const TS_BATCH = 8;
@@ -113,9 +119,11 @@ export function useTransactions(poolTokens: { symbol: string; address: string }[
   const scanBack = useCallback(async (startTo: bigint, limit: number) => {
     const acc: RawTx[] = [];
     let to = startTo;
-    while (acc.length < limit && to >= DEPLOY_BLOCK) {
+    let chunks = 0;
+    while (acc.length < limit && to >= DEPLOY_BLOCK && chunks < MAX_CHUNKS_PER_SCAN) {
       const from = to - CHUNK + 1n < DEPLOY_BLOCK ? DEPLOY_BLOCK : to - CHUNK + 1n;
       acc.push(...await fetchChunk(client!, from, to, sym));
+      chunks++;
       if (from === DEPLOY_BLOCK) { to = DEPLOY_BLOCK - 1n; break; }
       to = from - 1n;
     }

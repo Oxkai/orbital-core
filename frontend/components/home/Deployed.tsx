@@ -4,6 +4,7 @@ import {
   HOOK_ADDRESS, POOL_MANAGER, SWAP_ROUTER, QUOTER_ADDRESS,
   TOKEN_ADDRESSES,
 } from "@/lib/contracts";
+import { explorerAddressUrl } from "@/lib/wagmi";
 
 type Contract = { name: string; address: string };
 
@@ -65,7 +66,7 @@ function GroupHeader({ code, label, count }: { code: string; label: string; coun
 function Row({ c, index }: { c: Contract; index: string }) {
   return (
     <a
-      href={`https://testnet.monadscan.com/address/${c.address}`}
+      href={explorerAddressUrl(c.address)}
       target="_blank"
       rel="noopener noreferrer"
       className="group grid grid-cols-12 items-center gap-5 px-5 py-4 border-b border-dashed transition-colors hover:bg-white/[0.03]"

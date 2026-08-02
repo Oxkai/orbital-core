@@ -37,10 +37,16 @@ export function usePool(poolAddress: Address) {
     query: { enabled: ready },
   });
 
-  // Parse step2
+  // Parse step2. `step2.data` can be present while individual calls inside the
+  // multicall failed, so each entry is checked rather than assumed.
   const tokenAddrs = Array.from({ length: n }, (_, i) =>
     (step2.data?.[i]?.result as Address | undefined) ?? ("0x" as Address)
   );
+
+  // Every asset address must have resolved before the pool is usable. Without
+  // this the unresolved ones all collapse to the "0x" placeholder, which both
+  // renders ghost tokens and gives React duplicate keys.
+  const addressesResolved = tokenAddrs.length > 0 && tokenAddrs.every(a => a.length === 42);
   const reservesBig = Array.from({ length: n }, (_, i) =>
     (step2.data?.[n + i]?.result as bigint | undefined) ?? 0n
   );
@@ -74,7 +80,7 @@ export function usePool(poolAddress: Address) {
 
   const { volume24h, fees24h } = useVolume24h(fee);
 
-  const pool: Pool | null = ready && step2.data ? {
+  const pool: Pool | null = ready && step2.data && addressesResolved ? {
     address:             poolAddress,
     name:                tokens.map(t => t.symbol).join(" / "),
     tokens,
@@ -99,7 +105,7 @@ export function usePool(poolAddress: Address) {
 
   return {
     pool,
-    isLoading: step1.isLoading || step2.isLoading,
+    isLoading: step1.isLoading || step2.isLoading || (ready && !addressesResolved && !step2.isError),
     isError:   step1.isError   || step2.isError,
     refetch:   () => { step1.refetch(); step2.refetch(); },
   };

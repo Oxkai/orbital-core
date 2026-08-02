@@ -12,53 +12,17 @@ import {
   Circle,
   ArrowSquareOut,
 } from "@phosphor-icons/react";
-import { TokenDAI, TokenUSDT, TokenUSDC, TokenFRAX } from "@token-icons/react";
 import { useAccount, useConnect, useConnectors, useWriteContract, useReadContract, useWaitForTransactionReceipt } from "wagmi";
 import { type Address, type Hash, maxUint256 } from "viem";
 import { color, typography } from "@/constants";
 import { usePool } from "@/lib/hooks/usePool";
 import { useTokenBalances, useTokenAllowances } from "@/lib/hooks/useTokenBalances";
 import { POOL_ADDRESS, QUOTER_ADDRESS, ROUTER_ADDRESS, ERC20_ABI, ROUTER_ABI, QUOTER_ABI, buildPoolKey } from "@/lib/contracts";
-import { monadTestnet } from "@/lib/wagmi";
+import { monadTestnet, explorerTxUrl } from "@/lib/wagmi";
 import { MonadMark } from "@/components/app/shared/MonadMark";
+import { TokenIcon } from "@/components/app/shared/TokenIcon";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const TOKEN_ICON_MAP: Record<string, React.ComponentType<any>> = {
-  DAI:  TokenDAI,
-  USDT: TokenUSDT,
-  USDC: TokenUSDC,
-  FRAX: TokenFRAX,
-};
-const TOKEN_COLOR_MAP: Record<string, string> = {
-  CRVUSD: "#FF6B35",
-};
-
-function TokenIcon({ symbol, size = 28 }: { symbol: string; size?: number }) {
-  const Icon = TOKEN_ICON_MAP[symbol.toUpperCase()];
-  if (Icon) return <Icon size={size} variant="branded" />;
-  const fallbackBg = TOKEN_COLOR_MAP[symbol.toUpperCase()] ?? "#555";
-  const inner = Math.round(size * 0.6);
-  return (
-    <span
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        backgroundColor: fallbackBg,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        fontSize: Math.max(6, inner * 0.42),
-        color: "#fff",
-        fontFamily: typography.caption.family,
-        fontWeight: 700,
-      }}
-    >
-      {symbol.slice(0, 2).toUpperCase()}
-    </span>
-  );
-}
 
 const LBL = {
   fontFamily: typography.caption.family,
@@ -138,7 +102,7 @@ function TokenDropdown({ tokens, selected, excluded, onSelect, onClose }: Dropdo
     >
       {tokens.map((token, idx) => (
         <button
-          key={token.address}
+          key={`${token.address}-${idx}`}
           onClick={() => { onSelect(idx); onClose(); }}
           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-(--color-surface-2) transition-colors"
           style={{ backgroundColor: idx === selected ? color.surface2 : color.surface1 }}
@@ -418,7 +382,6 @@ function SwapInfoPanel({ tokenIn, tokenOut, tokens, numIn, amountOut, slippage, 
 }
 
 // ─── Main widget ──────────────────────────────────────────────────────────────
-
 
 export function SwapWidget() {
   const [tokenIn,      setTokenIn]      = useState(0);
@@ -850,7 +813,7 @@ export function SwapWidget() {
               >
                 {swapResult.hash ? (
                   <a
-                    href={`https://testnet.monadscan.com/tx/${swapResult.hash}`}
+                    href={explorerTxUrl(swapResult.hash)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 hover:opacity-100 opacity-70 transition-opacity"
