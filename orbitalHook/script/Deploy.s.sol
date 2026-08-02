@@ -59,17 +59,17 @@ contract DeployScript is Script {
     //   2,000,000                0.85
     //   1,000,000                0.80
     function _tierR(uint256 i) internal pure returns (uint256) {
-        if (i == 0) return 4_000_000 ether;
-        if (i == 1) return 3_000_000 ether;
-        if (i == 2) return 2_000_000 ether;
-        return 1_000_000 ether;
+        if (i == 0) return 900_000_000 ether;
+        if (i == 1) return 675_000_000 ether;
+        if (i == 2) return 450_000_000 ether;
+        return 225_000_000 ether;
     }
 
     function _tierDepeg(uint256 i) internal pure returns (uint256) {
-        if (i == 0) return 0.95e18;
-        if (i == 1) return 0.90e18;
-        if (i == 2) return 0.85e18;
-        return 0.80e18;
+        if (i == 0) return 0.999e18;
+        if (i == 1) return 0.995e18;
+        if (i == 2) return 0.99e18;
+        return 0.98e18;
     }
 
     uint256 internal constant N_TIERS = 4;

@@ -261,29 +261,36 @@ contract OrbitalHookTest is BaseTest {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        uint256 expectedPerAsset = SphereMath.equalPricePoint(rWad, 3);
+        // The curve is credited the full equal-price point (virtual), but the LP
+        // funds only down to the tick's xMin. That gap is the concentration.
+        uint256 expectedVirtual = SphereMath.equalPricePoint(rWad, 3);
+        uint256 expectedReal = expectedVirtual - TickLib.xMin(rWad, 3, kWad);
+        assertLt(expectedReal, expectedVirtual, "concentrated tick costs less than full range");
 
         (uint256 tickIdx, uint256[] memory amounts) = hook.addLiquidity(kWad, rWad, maxA);
 
         assertEq(tickIdx, 0, "first tick");
         assertEq(amounts.length, 3);
-        assertEq(amounts[0], expectedPerAsset, "asset0 amount");
-        assertEq(amounts[1], expectedPerAsset, "asset1 amount");
-        assertEq(amounts[2], expectedPerAsset, "asset2 amount");
+        assertEq(amounts[0], expectedReal, "asset0 amount");
+        assertEq(amounts[1], expectedReal, "asset1 amount");
+        assertEq(amounts[2], expectedReal, "asset2 amount");
 
         // ERC-6909 share (tokenId = tickIdx).
         assertEq(hook.balanceOf(address(this), tickIdx), rWad, "6909 balance");
 
-        // slot0
+        // slot0 tracks VIRTUAL reserves — what the curve prices on.
         (uint256 sumX,, uint256 rInt, uint256 kBound,) = hook.slot0();
-        assertEq(sumX, expectedPerAsset * 3, "sumX");
+        assertEq(sumX, expectedVirtual * 3, "sumX");
         assertEq(rInt, rWad, "rInt");
         assertEq(kBound, 0, "kBound");
 
-        // reserves
-        assertEq(hook.reserves(0), expectedPerAsset);
-        assertEq(hook.reserves(1), expectedPerAsset);
-        assertEq(hook.reserves(2), expectedPerAsset);
+        // reserves[] tracks REAL tokens custodied.
+        assertEq(hook.reserves(0), expectedReal);
+        assertEq(hook.reserves(1), expectedReal);
+        assertEq(hook.reserves(2), expectedReal);
+
+        // virtualOffset closes the gap between the two.
+        assertEq(hook.virtualOffset(), expectedVirtual - expectedReal, "virtual offset");
 
         // ticks
         assertEq(hook.numTicks(), 1);
@@ -295,7 +302,8 @@ contract OrbitalHookTest is BaseTest {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        uint256 expectedPerAsset = SphereMath.equalPricePoint(rWad, 3);
+        // Token movement is the REAL deposit, not the virtual credit.
+        uint256 expectedReal = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
 
         uint256 balBeforeLP = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
         uint256 balBeforePM = MockERC20(Currency.unwrap(c0)).balanceOf(address(poolManager));
@@ -304,19 +312,19 @@ contract OrbitalHookTest is BaseTest {
 
         assertEq(
             MockERC20(Currency.unwrap(c0)).balanceOf(address(this)),
-            balBeforeLP - expectedPerAsset,
+            balBeforeLP - expectedReal,
             "LP balance debited"
         );
         assertEq(
             MockERC20(Currency.unwrap(c0)).balanceOf(address(poolManager)),
-            balBeforePM + expectedPerAsset,
+            balBeforePM + expectedReal,
             "PoolManager credited"
         );
 
         // Hook holds matching ERC-6909 claim tokens against PoolManager.
         assertEq(
             poolManager.balanceOf(address(hook), c0.toId()),
-            expectedPerAsset,
+            expectedReal,
             "claim tokens minted to hook"
         );
     }
@@ -355,7 +363,7 @@ contract OrbitalHookTest is BaseTest {
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
         hook.addLiquidity(kWad, rWad, maxA);
-        uint256 perAsset1 = SphereMath.equalPricePoint(rWad, 3);
+        uint256 perAsset1 = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
 
         // Second mint: pool is balanced, so pro-rata yields the same per-asset amount.
         (uint256 tickIdx2, uint256[] memory amounts2) = hook.addLiquidity(kWad, rWad, maxA);
@@ -785,7 +793,7 @@ contract OrbitalHookTest is BaseTest {
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
         hook.addLiquidity(kWad, rWad, maxA);
 
-        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3);
+        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
 
         // Burn half.
         uint256 halfR = rWad / 2;
@@ -814,7 +822,7 @@ contract OrbitalHookTest is BaseTest {
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
         hook.addLiquidity(kWad, rWad, maxA);
 
-        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3);
+        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
 
         uint256 balC0Before = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
         uint256 pmBalBefore = MockERC20(Currency.unwrap(c0)).balanceOf(address(poolManager));

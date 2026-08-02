@@ -121,13 +121,18 @@ library TickLib {
             A = nMinus1R - kSqrtN;
         }
 
-        // sqrtDisc = sqrt(k^2*n - n*A^2), WAD-scaled
+        // sqrtDisc = sqrt(k^2*n - n*A^2), WAD-scaled.
+        //
+        // The discriminant is analytically >= 0 across the whole valid range and
+        // exactly 0 at k == kMin (there A == k, so k²n - nA² == 0). Two
+        // independent floored sqrts can drive it a few wei negative right at
+        // that boundary, so saturate instead of reverting — at k == kMin the
+        // true value is 0 and `lo` correctly collapses to the equal-price point.
         uint256 sqrtDisc;
         {
             uint256 kSqN = n * FullMath.mulDiv(k, k, WAD);
             uint256 nASq = n * FullMath.mulDiv(A, A, WAD);
-            require(kSqN >= nASq, "TickLib: negative discriminant");
-            sqrtDisc = SphereMath.sqrt((kSqN - nASq) * WAD);
+            sqrtDisc = kSqN > nASq ? SphereMath.sqrt((kSqN - nASq) * WAD) : 0;
         }
 
         lo = (kSqrtN - sqrtDisc) / n;

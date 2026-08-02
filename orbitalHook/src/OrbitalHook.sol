@@ -105,9 +105,31 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
 
     Slot0 public slot0;
 
-    mapping(uint8 => uint256) public reserves; // virtual x⃗, WAD
+    mapping(uint8 => uint256) public reserves; // REAL x⃗ (tokens actually held), WAD
     mapping(uint8 => uint256) public feesAccrued; // WAD (scaled to raw on collect)
     mapping(uint8 => uint256) public feeGrowthGlobal; // WAD per unit interior rInt
+
+    /// @notice Per-asset virtual floor: Σ over live ticks of that tick's `xMin`
+    ///         (paper §4.7). The curve prices on VIRTUAL reserves
+    ///         `reserves[i] + virtualOffset`, while `reserves[i]` is what the
+    ///         pool actually custodies.
+    ///
+    /// @dev    This is the concentration. A tick bounded at depeg price p never
+    ///         trades below `xMin`, so the LP funds only `xBase - xMin` and the
+    ///         curve is credited the full `xBase`. The ratio
+    ///         `xBase / (xBase - xMin)` is exactly `TickLib.capitalEfficiency`
+    ///         (paper §4.9): ~133x at p=0.99, n=4.
+    ///
+    ///         `virtualOffset` is invariant under swaps and tick crossings — a
+    ///         swap moves real and virtual reserves by the same delta, and a
+    ///         crossing only re-splits `rInt`/`kBound`/`sBound`, leaving the
+    ///         pool-wide `sumX`/`sumXSq` untouched. It changes only on mint and
+    ///         burn.
+    uint256 public virtualOffset;
+
+    /// @dev Per-tick share of `virtualOffset`, so a burn can release exactly
+    ///      what the matching mint contributed.
+    mapping(uint256 => uint256) public tickVirtualFloor;
 
     TickLib.Tick[] public ticks;
     /// @dev O(1) lookup of LIVE INTERIOR ticks by their `k` value, encoded as
@@ -451,6 +473,13 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
     ///      lifetime (swaps and crossings conserve total radius). 1e34 WAD ≈ 1e16
     ///      18-decimal tokens — far above any real pool, with >1e6× int256 margin.
     uint256 internal constant MAX_RINT = 1e34;
+
+    /// @dev Ceiling on `xBase / (xBase - xMin)` (paper §4.9) for a single mint.
+    ///      Caps how much virtual liquidity a tick can claim per unit of real
+    ///      capital. p=0.99 at n=4 is ~133x, p=0.999 ~1333x, so 2000x leaves
+    ///      normal stablecoin bands untouched while blocking the k→kMin
+    ///      degeneracy where required capital tends to zero.
+    uint256 internal constant MAX_CAPITAL_EFFICIENCY = 2000;
 
     function _solveWithCrossings(SwapState memory state, uint256[] memory res, uint8 assetIn, uint8 assetOut)
         internal
@@ -834,9 +863,11 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
             if (m.kWad < km || m.kWad > kM) revert KOutOfRange();
         }
 
-        amounts = _computeDepositAmounts(m.rWad);
+        uint256[] memory virt;
+        uint256 xLo;
+        (amounts, virt, xLo) = _computeDepositAmounts(m.rWad, m.kWad);
 
-        // Slippage check.
+        // Slippage check — against the REAL amounts the LP actually pays.
         for (uint8 i = 0; i < N; ++i) {
             if (amounts[i] > m.maxAmounts[i]) revert SlippageExceeded(i, amounts[i], m.maxAmounts[i]);
         }
@@ -844,8 +875,9 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
         // Tick merge-or-create.
         tickIdx = _findOrCreateTick(m.kWad, m.rWad);
 
-        // Update reserves, sumX, sumXSq, rInt.
-        _applyMintToTorus(amounts, m.rWad);
+        // Update reserves (real), sumX/sumXSq (virtual), rInt, virtualOffset.
+        _applyMintToTorus(amounts, virt, m.rWad, xLo);
+        tickVirtualFloor[tickIdx] += xLo;
 
         // Bound total radius so the crossing-path solver coefficients stay within
         // int256 (see MAX_RINT). kBound == 0 here (mints are gated on it), so rInt
@@ -942,22 +974,67 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
         return (wad + s - 1) / s;
     }
 
-    function _computeDepositAmounts(uint256 rWad) internal view returns (uint256[] memory amounts) {
-        amounts = new uint256[](N);
+    /// @notice Deposit sizing for a mint of radius `rWad` bounded at `kWad`.
+    /// @return real  Tokens the LP actually transfers in (what the pool custodies).
+    /// @return virt  Reserves the curve is credited with.
+    /// @return xLo   Per-asset virtual floor this tick contributes (`virt - real`).
+    ///
+    /// @dev The gap between `virt` and `real` is the tick's `xMin`: the reserve
+    ///      level at which the tick hits its depeg bound and stops trading.
+    ///      Because the tick exits there, the LP never has to fund below it —
+    ///      the same virtual-reserve argument that gives Uniswap v3 its
+    ///      concentration. Charging `virt` (as this did before) makes every tick
+    ///      full-range and collapses the curve onto constant-product.
+    function _computeDepositAmounts(uint256 rWad, uint256 kWad)
+        internal
+        view
+        returns (uint256[] memory real, uint256[] memory virt, uint256 xLo)
+    {
+        real = new uint256[](N);
+        virt = new uint256[](N);
         // Mints are not safe while any boundary tick is in play — the deposit
         // ratios needed to satisfy the torus invariant depend on kBound/sBound,
         // and neither the equalPricePoint nor the pro-rata branch accounts for
         // that. The pool must first have all ticks recovered (or burned) so
         // kBound == 0 before fresh liquidity can be added.
         if (slot0.kBound != 0) revert MintBlockedByBoundaryTicks();
+
+        xLo = TickLib.xMin(rWad, N, kWad);
+
         if (slot0.rInt == 0) {
             uint256 perAsset = SphereMath.equalPricePoint(rWad, N);
-            for (uint8 i = 0; i < N; ++i) amounts[i] = perAsset;
-        } else {
+            xLo = _capConcentration(perAsset, xLo);
             for (uint8 i = 0; i < N; ++i) {
-                amounts[i] = FullMath.mulDiv(reserves[i], rWad, slot0.rInt);
+                virt[i] = perAsset;
+                real[i] = perAsset - xLo;
+            }
+        } else {
+            uint256 off = virtualOffset;
+            // Cap against the smallest virtual amount so no asset is under-funded.
+            uint256 minV = type(uint256).max;
+            for (uint8 i = 0; i < N; ++i) {
+                uint256 v = FullMath.mulDiv(reserves[i] + off, rWad, slot0.rInt);
+                virt[i] = v;
+                if (v < minV) minV = v;
+            }
+            xLo = _capConcentration(minV, xLo);
+            for (uint8 i = 0; i < N; ++i) {
+                real[i] = virt[i] - xLo;
             }
         }
+    }
+
+    /// @dev Bound the virtual floor so a tick can never be credited more than
+    ///      `MAX_CAPITAL_EFFICIENCY` times the capital actually deposited.
+    ///
+    ///      As k approaches kMin the tick's band collapses and `xMin` tends to
+    ///      `xBase`, so the required deposit tends to zero and leverage diverges.
+    ///      This is the same degeneracy Uniswap v3 avoids by bounding tick range,
+    ///      and without a cap a dust mint could claim unbounded virtual liquidity.
+    function _capConcentration(uint256 xBase, uint256 xLo) internal pure returns (uint256) {
+        uint256 floorReal = xBase / MAX_CAPITAL_EFFICIENCY;
+        uint256 maxLo = xBase - floorReal;
+        return xLo > maxLo ? maxLo : xLo;
     }
 
     function _findOrCreateTick(uint256 kWad, uint256 rWad) internal returns (uint256 tickIdx) {
@@ -1005,21 +1082,27 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
         _interiorTickByK[kWad] = tickIdx + 1;
     }
 
-    function _applyMintToTorus(uint256[] memory amounts, uint256 rWad) internal {
+    /// @dev `virt` drives the curve (sumX/sumXSq), `real` drives custody
+    ///      (reserves). They differ by `xLo` per asset — see `virtualOffset`.
+    function _applyMintToTorus(uint256[] memory real, uint256[] memory virt, uint256 rWad, uint256 xLo)
+        internal
+    {
         // Accumulate sumX/sumXSq in memory and commit once at the end — one
         // SSTORE per slot0 field instead of N per asset.
+        uint256 off = virtualOffset;
         uint256 totalAdded;
         uint256 sumXSqAdded;
         for (uint8 i = 0; i < N; ++i) {
-            uint256 xi = reserves[i];
-            uint256 amt = amounts[i];
+            uint256 xiVirt = reserves[i] + off; // virtual reserve BEFORE this mint
+            uint256 amt = virt[i];
             totalAdded += amt;
-            sumXSqAdded += FullMath.mulDiv(2 * xi, amt, WAD) + FullMath.mulDiv(amt, amt, WAD);
-            reserves[i] = xi + amt;
+            sumXSqAdded += FullMath.mulDiv(2 * xiVirt, amt, WAD) + FullMath.mulDiv(amt, amt, WAD);
+            reserves[i] += real[i];
         }
         slot0.sumX += totalAdded;
         slot0.sumXSq += sumXSqAdded;
         slot0.rInt += rWad;
+        virtualOffset = off + xLo;
     }
 
     function _accumulateFee(uint8 assetIn, uint256 feeAmount) internal {
@@ -1057,12 +1140,30 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
         }
     }
 
-    function _computeWithdrawAmounts(uint256 rWad) internal view returns (uint256[] memory amounts) {
+    /// @return real  Tokens paid out to the LP.
+    /// @return virt  Reserves removed from the curve.
+    /// @return xLo   Virtual floor released back (`virt - real`), the pro-rata
+    ///               share of this tick's contribution to `virtualOffset`.
+    function _computeWithdrawAmounts(uint256 rWad, uint256 tickIdx, uint256 tickR)
+        internal
+        view
+        returns (uint256[] memory real, uint256[] memory virt, uint256 xLo)
+    {
         uint256 rInt = slot0.rInt;
         if (rInt == 0) revert NotEnoughLiquidity();
-        amounts = new uint256[](N);
+        real = new uint256[](N);
+        virt = new uint256[](N);
+
+        // Release the same fraction of this tick's virtual floor as the fraction
+        // of its radius being withdrawn. Mirrors the mint exactly, so a full
+        // burn returns `virtualOffset` to where it was before the mint.
+        xLo = tickR == 0 ? 0 : FullMath.mulDiv(tickVirtualFloor[tickIdx], rWad, tickR);
+
+        uint256 off = virtualOffset;
         for (uint8 i = 0; i < N; ++i) {
-            amounts[i] = FullMath.mulDiv(reserves[i], rWad, rInt);
+            uint256 v = FullMath.mulDiv(reserves[i] + off, rWad, rInt);
+            virt[i] = v;
+            real[i] = v > xLo ? v - xLo : 0;
         }
     }
 
@@ -1094,9 +1195,11 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
 
         // kBound == 0 above guarantees every live tick is interior.
         TickLib.Tick storage t = ticks[b.tickIdx];
-        amounts = _computeWithdrawAmounts(b.rWad);
+        uint256[] memory virtOut;
+        uint256 xLoOut;
+        (amounts, virtOut, xLoOut) = _computeWithdrawAmounts(b.rWad, b.tickIdx, t.r);
 
-        // Slippage check.
+        // Slippage check — against the REAL amounts the LP actually receives.
         for (uint8 i = 0; i < N; ++i) {
             if (amounts[i] < b.minAmounts[i]) revert SlippageExceeded(i, amounts[i], b.minAmounts[i]);
         }
@@ -1105,21 +1208,25 @@ contract OrbitalHook is BaseHook, IUnlockCallback, ERC6909, Ownable2Step, Pausab
         // burn simply shrinks the interior radius.
         slot0.rInt -= b.rWad;
 
-        // Update sumX, sumXSq, reserves.
+        // Update sumX/sumXSq (virtual) and reserves (real).
         {
+            uint256 off = virtualOffset;
             uint256 totalRemoved;
             uint256 totalSqRemoved;
             for (uint8 i = 0; i < N; ++i) {
-                uint256 xOld = reserves[i];
-                uint256 amt = amounts[i];
+                uint256 xVirt = reserves[i] + off;
+                uint256 amt = virtOut[i];
                 totalRemoved += amt;
                 // Δ(x²) = 2·x·amt − amt²
-                totalSqRemoved += FullMath.mulDiv(2 * xOld, amt, WAD) - FullMath.mulDiv(amt, amt, WAD);
-                reserves[i] = xOld - amt;
+                totalSqRemoved += FullMath.mulDiv(2 * xVirt, amt, WAD) - FullMath.mulDiv(amt, amt, WAD);
+                reserves[i] -= amounts[i];
             }
             slot0.sumX -= totalRemoved;
             // Saturating to absorb ≤ N wei of mulDiv rounding dust against mint.
             slot0.sumXSq = slot0.sumXSq > totalSqRemoved ? slot0.sumXSq - totalSqRemoved : 0;
+            virtualOffset = off > xLoOut ? off - xLoOut : 0;
+            tickVirtualFloor[b.tickIdx] =
+                tickVirtualFloor[b.tickIdx] > xLoOut ? tickVirtualFloor[b.tickIdx] - xLoOut : 0;
         }
 
         t.r -= b.rWad;
