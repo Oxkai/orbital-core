@@ -13,7 +13,7 @@ export function AppFooter() {
           color: color.textMuted,
         }}
       >
-        UNICHAIN SEPOLIA · CHAIN ID 1301
+        MONAD TESTNET · CHAIN ID 10143
       </span>
       <span
         style={{

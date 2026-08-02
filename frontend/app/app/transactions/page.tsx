@@ -41,7 +41,7 @@ function TokenIcon({ symbol, size = 16 }: { symbol: string; size?: number }) {
   );
 }
 
-const EXPLORER = "https://sepolia.uniscan.xyz";
+const EXPLORER = "https://testnet.monadscan.com";
 
 const POOL_TOKENS = Object.entries(TOKEN_META).map(([addr, m]) => ({ symbol: m.symbol, address: addr }));
 

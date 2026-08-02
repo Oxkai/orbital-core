@@ -100,7 +100,7 @@ export function Masthead() {
               { t: ", built as a ", v: "off" },
               { t: "Uniswap v4 hook", v: "on" },
               { t: " and live on ", v: "off" },
-              { t: "Unichain Sepolia", v: "on" },
+              { t: "Monad Testnet", v: "on" },
               { t: ".", v: "green" },
             ]}
           />

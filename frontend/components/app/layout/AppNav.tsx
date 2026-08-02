@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccount, useConnect, useConnectors, useDisconnect, useChainId, useSwitchChain } from "wagmi";
-import { unichainSepolia } from "@/lib/wagmi";
+import { monadTestnet } from "@/lib/wagmi";
 import { color, typography } from "@/constants";
 import { List as Menu, X, MagnifyingGlass } from "@phosphor-icons/react";
 
@@ -44,7 +44,7 @@ export function AppNav() {
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   const showConnectedWallet = isMounted && isConnected && address;
-  const wrongChain = isMounted && isConnected && chainId !== unichainSepolia.id;
+  const wrongChain = isMounted && isConnected && chainId !== monadTestnet.id;
 
   return (
     <>
@@ -139,7 +139,7 @@ export function AppNav() {
 
           {wrongChain && (
             <button
-              onClick={() => switchChain({ chainId: unichainSepolia.id })}
+              onClick={() => switchChain({ chainId: monadTestnet.id })}
               className="hidden sm:flex items-center h-9 px-3 hover:opacity-90 transition-opacity"
               style={{
                 color: color.error,
@@ -217,7 +217,7 @@ export function AppNav() {
         >
           {wrongChain && (
             <button
-              onClick={() => { switchChain({ chainId: unichainSepolia.id }); setMenuOpen(false); }}
+              onClick={() => { switchChain({ chainId: monadTestnet.id }); setMenuOpen(false); }}
               className="w-full text-left py-3"
               style={{
                 color: color.error,

@@ -21,14 +21,20 @@ contract DeployPeripheryScript is Script {
     // but NO separate v4 SwapRouter. Our SwapWidget and SeedActivity use the
     // v4-specific Router ABI, so run this script to deploy a lightweight one
     // pointed at the canonical PoolManager — keeps the frontend code intact.
-    address internal constant POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
+    /// @dev Defaults to the Unichain Sepolia canonical PoolManager. Override per
+    ///      chain with `POOL_MANAGER=0x… forge script …` — on Monad testnet this
+    ///      is the PoolManager that Deploy.s.sol self-deployed.
+    address internal constant DEFAULT_POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     function run() external {
+        address poolManager = vm.envOr("POOL_MANAGER", DEFAULT_POOL_MANAGER);
+        console2.log("PoolManager:", poolManager);
+
         vm.startBroadcast();
 
-        address router = V4RouterDeployer.deploy(POOL_MANAGER, PERMIT2);
-        V4Quoter quoter = new V4Quoter(IPoolManager(POOL_MANAGER));
+        address router = V4RouterDeployer.deploy(poolManager, PERMIT2);
+        V4Quoter quoter = new V4Quoter(IPoolManager(poolManager));
 
         vm.stopBroadcast();
 

@@ -6,7 +6,7 @@ import { ArrowRight, CurrencyDollar, TrendUp, Coins, Pulse, Copy, Check, ArrowSq
 import { TokenDAI, TokenUSDT, TokenUSDC, TokenFRAX } from "@token-icons/react";
 import { color, typography } from "@/constants";
 import { fmtUSD, type Pool } from "@/lib/mock/data";
-import { UnichainMark } from "@/components/app/shared/UnichainMark";
+import { MonadMark } from "@/components/app/shared/MonadMark";
 
 const TOKEN_ICON_MAP: Record<string, React.ElementType> = {
   DAI: TokenDAI, USDT: TokenUSDT, USDC: TokenUSDC, FRAX: TokenFRAX,
@@ -189,7 +189,7 @@ export function PoolCard({ pool }: PoolCardProps) {
           </span>
           <CopyButton text={pool.address} />
           <a
-            href={`https://sepolia.uniscan.xyz/address/${pool.address}`}
+            href={`https://testnet.monadscan.com/address/${pool.address}`}
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
@@ -201,8 +201,8 @@ export function PoolCard({ pool }: PoolCardProps) {
           </a>
         </div>
         <span className="flex items-center gap-1.5 shrink-0" style={body("caption", color.textMuted)}>
-          <UnichainMark size={11} />
-          Unichain Sepolia
+          <MonadMark size={11} />
+          Monad Testnet
         </span>
       </div>
 

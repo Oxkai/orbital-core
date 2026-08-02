@@ -1,18 +1,17 @@
 import { type Address } from "viem";
 
-// ─── Deployed addresses (Unichain Sepolia, chainId 1301) ──────────────────────
-// PoolManager and V4Quoter are canonical Uniswap v4 deployments on Unichain
-// (https://developers.uniswap.org/contracts/v4/deployments). Permit2 is the
-// canonical singleton, same on every chain. The OrbitalHook, the SwapRouter
-// (deployed via orbitalHook/script/DeployPeriphery.s.sol since Unichain has
-// no canonical v4 SwapRouter), and the four mock-stablecoin addresses are
-// filled in after the Deploy.s.sol + DeployPeriphery.s.sol runs.
+// ─── Deployed addresses (Monad testnet, chainId 10143) ────────────────────────
+// Monad testnet has no canonical Uniswap v4 deployment, so Deploy.s.sol brings
+// its own PoolManager (via hookmate) alongside the hook and the four mock
+// stablecoins. DeployPeriphery.s.sol then adds the v4 SwapRouter and V4Quoter
+// pointed at that PoolManager. Permit2 is the canonical singleton, already
+// present on Monad testnet at the same address as every other chain.
 
-export const HOOK_ADDRESS    = "0x08E32551Cf10f042721E1387e7Be8538beC02A88" as Address; // OrbitalHook (USDC/USDT/DAI/FRAX)
-export const POOL_MANAGER    = "0x00B036B58a818B1BC34d502D3fE730Db729e62AC" as Address; // canonical
-export const SWAP_ROUTER     = "0xb974DE781ec4bCf09d91Db13A3aF74d14FfE7540" as Address; // our v4Router04 -> canonical PoolManager
-export const QUOTER_ADDRESS  = "0x56DCD40A3F2d466F48e7F48bDBE5Cc9B92Ae4472" as Address; // canonical V4Quoter
-export const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address;
+export const HOOK_ADDRESS    = "0x4676D3dec853B518110702d90E5f43CF803C2a88" as Address; // OrbitalHook (USDC/USDT/DAI/FRAX)
+export const POOL_MANAGER    = "0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7" as Address; // self-deployed v4 PoolManager
+export const SWAP_ROUTER     = "0xC30819b8ac12B5d12751b83cFfebD6F0bFa0b53E" as Address; // v4Router04
+export const QUOTER_ADDRESS  = "0x3f53c9ae1ae5D34D8A89986ea456da8e69916725" as Address; // V4Quoter
+export const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address; // canonical
 
 // The OrbitalHook is both the "pool" (engine state + LP surface) and the swap
 // target. LP positions are soulbound ERC-6909 shares on the hook (tokenId =
@@ -25,10 +24,10 @@ export const ROUTER_ADDRESS  = SWAP_ROUTER;
 // Registered assets, named by symbol. The hook internally stores them
 // sorted-ascending by address; the frontend looks them up via TOKEN_META.
 export const TOKEN_ADDRESSES = {
-  USDC: "0x26301b1f7Ec55Cea35111b79E1Df986c314B4a93" as Address,
-  USDT: "0x37FC8Eade109847a5CA65cf25A7Cf8a1d003fEEd" as Address,
-  DAI:  "0x35ff498cE5FC23Ba5536044F8358C194386c9832" as Address,
-  FRAX: "0x76b1B6078f392Ef3101f7b01E7B593aB1BeA9d6b" as Address,
+  USDC: "0xa854E3ee9eFa1936034dE51CCD6e6fB66F4309cF" as Address,
+  USDT: "0xaF9Bc1C4a47860D970BD20472776EFE24526660d" as Address,
+  DAI:  "0xbBd1DD6CEA4E7D114439DB527a99d0Aae789203b" as Address,
+  FRAX: "0x081588D70E9cC742Ab99bb80c2370f501E791531" as Address,
 } as const;
 
 // Pool fee in hundredths of a bip (matches the hook's immutable `fee`).
@@ -36,18 +35,18 @@ export const POOL_FEE: number = 100;
 export const POOL_TICK_SPACING: number = 1;
 export const POOL_KEY_LP_FEE: number = 0;
 
-// Block the OrbitalHook was deployed at on Unichain Sepolia — event scanners
+// Block the OrbitalHook was deployed at on Monad testnet — event scanners
 // start here instead of genesis.
-export const DEPLOY_BLOCK = 55529382n;
+export const DEPLOY_BLOCK = 50191823n;
 
 // ─── Token metadata (static) ──────────────────────────────────────────────────
 // Keys are lowercased token addresses; values are display metadata.
 
 export const TOKEN_META: Record<string, { symbol: string; name: string; color: string; decimals: number }> = {
-  "0x26301b1f7ec55cea35111b79e1df986c314b4a93": { symbol: "USDC", name: "USD Coin",       color: "#2775CA", decimals: 18 },
-  "0x37fc8eade109847a5ca65cf25a7cf8a1d003feed": { symbol: "USDT", name: "Tether USD",     color: "#26A17B", decimals: 18 },
-  "0x35ff498ce5fc23ba5536044f8358c194386c9832": { symbol: "DAI",  name: "Dai Stablecoin",  color: "#F5AC37", decimals: 18 },
-  "0x76b1b6078f392ef3101f7b01e7b593ab1bea9d6b": { symbol: "FRAX", name: "Frax",            color: "#BFBFBF", decimals: 18 },
+  "0xa854e3ee9efa1936034de51ccd6e6fb66f4309cf": { symbol: "USDC", name: "USD Coin",       color: "#2775CA", decimals: 18 },
+  "0xaf9bc1c4a47860d970bd20472776efe24526660d": { symbol: "USDT", name: "Tether USD",     color: "#26A17B", decimals: 18 },
+  "0xbbd1dd6cea4e7d114439db527a99d0aae789203b": { symbol: "DAI",  name: "Dai Stablecoin",  color: "#F5AC37", decimals: 18 },
+  "0x081588d70e9cc742ab99bb80c2370f501e791531": { symbol: "FRAX", name: "Frax",            color: "#BFBFBF", decimals: 18 },
 };
 
 // ─── PoolKey ──────────────────────────────────────────────────────────────────

@@ -19,8 +19,8 @@ import { color, typography } from "@/constants";
 import { usePool } from "@/lib/hooks/usePool";
 import { useTokenBalances, useTokenAllowances } from "@/lib/hooks/useTokenBalances";
 import { POOL_ADDRESS, QUOTER_ADDRESS, ROUTER_ADDRESS, ERC20_ABI, ROUTER_ABI, QUOTER_ABI, buildPoolKey } from "@/lib/contracts";
-import { unichainSepolia } from "@/lib/wagmi";
-import { UnichainMark } from "@/components/app/shared/UnichainMark";
+import { monadTestnet } from "@/lib/wagmi";
+import { MonadMark } from "@/components/app/shared/MonadMark";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TOKEN_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -478,9 +478,9 @@ export function SwapWidget() {
     : undefined;
 
   // Plain eth_call quote — no connected wallet needed (works pre-connect),
-  // always against Unichain Sepolia regardless of the wallet's chain.
+  // always against Monad Testnet regardless of the wallet's chain.
   const { data: quoteData } = useReadContract({
-    chainId:      unichainSepolia.id,
+    chainId:      monadTestnet.id,
     address:      QUOTER_ADDRESS,
     abi:          QUOTER_ABI,
     functionName: "quoteExactInputSingle",
@@ -606,7 +606,7 @@ export function SwapWidget() {
             className="flex items-center gap-1.5 px-2.5 h-7"
             style={{ backgroundColor: color.surface2 }}
           >
-            <UnichainMark size={13} />
+            <MonadMark size={13} />
             <span
               style={{
                 fontFamily: typography.caption.family,
@@ -616,7 +616,7 @@ export function SwapWidget() {
                 whiteSpace: "nowrap",
               }}
             >
-              Unichain Sepolia
+              Monad Testnet
             </span>
           </div>
           <button
@@ -850,7 +850,7 @@ export function SwapWidget() {
               >
                 {swapResult.hash ? (
                   <a
-                    href={`https://sepolia.uniscan.xyz/tx/${swapResult.hash}`}
+                    href={`https://testnet.monadscan.com/tx/${swapResult.hash}`}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 hover:opacity-100 opacity-70 transition-opacity"
