@@ -119,7 +119,11 @@ contract DeployScript is Script {
         if (block.chainid == 143) return 0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e;
         // Unichain Sepolia.
         if (block.chainid == 1301) return 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
-        // Monad testnet (10143) and local anvil have no canonical v4 — self-deploy.
+        // Monad testnet has no canonical v4. This is the PoolManager our first
+        // deploy brought up via hookmate — reuse it, since the deployer lands on
+        // a deterministic address and a second run would CREATE2-collide.
+        if (block.chainid == 10143) return 0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7;
+        // Local anvil — self-deploy a fresh one.
         return address(0);
     }
 
