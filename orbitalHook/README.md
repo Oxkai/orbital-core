@@ -70,7 +70,7 @@ forge build
 forge test          # 121 passing
 ```
 
-`via_ir = true` (solc 0.8.30) is required — the `TorusMath` library hits stack-too-deep without it. We implemented the complete Orbital math from the paper — the sphere invariant, tick planes, torus consolidation, and the segmenting quartic solver. The same engine backs our standalone Orbital AMM in [`../../contracts/`](../../contracts/); this hook adapts it to the v4 surface.
+`via_ir = true` (solc 0.8.30) is required — the `TorusMath` library hits stack-too-deep without it. We implemented the complete Orbital math from the paper — the sphere invariant, tick planes, torus consolidation, and the segmenting quartic solver. The same engine backs our standalone (non-v4) Orbital AMM; this hook adapts it to the v4 surface.
 
 ---
 
@@ -79,7 +79,7 @@ forge test          # 121 passing
 ```
 src/
 ├── OrbitalHook.sol          one contract: storage + v4 hook + LP entry + engine
-└── libraries/               math (shared with ../../contracts/src/lib/)
+└── libraries/               math (SphereMath, TorusMath, TickLib, QuadraticSolver)
     ├── FullMath.sol         512-bit mulDiv — full-precision intermediate products
     ├── SphereMath.sol       sphere invariant, radius, equal-price point
     ├── TorusMath.sol        folds all ticks into the torus running sums
@@ -183,4 +183,4 @@ Monad testnet has no canonical Uniswap v4, so the stack self-deploys a `PoolMana
 | FRAX (mock) | `0x94B5be428FCC1000FdBbc556fE468310f556126d` |
 | Admin / owner | `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39` |
 
-Four mock 18-decimal stablecoins → 6 pair pools registered against the hook → tiered seed across 4 tiers (depeg bounds 0.999 / 0.995 / 0.99 / 0.98). Live state: **~$20M of real capital across 4 ticks, all interior, kBound = 0**, supporting an interior radius of **2.25e9** — about 225x what the same capital buys full-range. The hook address suffix `...6A88` encodes its permission flags (CREATE2-mined).
+Four mock 18-decimal stablecoins → 6 pair pools registered against the hook → tiered seed across 4 tiers (depeg bounds 0.999 / 0.995 / 0.99 / 0.98). Live state: **~$20M of real capital across 5 ticks, all interior, kBound = 0**, supporting an interior radius of **2.252e9** — about 154x what the same capital buys full-range. The hook address suffix `...6A88` encodes its permission flags (CREATE2-mined).

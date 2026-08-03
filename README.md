@@ -1,4 +1,4 @@
-<img src="frontend/public/orbital.png" width="76" height="76" alt="Orbital logo" />
+<img src="frontend/public/logo.svg" width="76" height="76" alt="Orbital logo" />
 
 # Orbital Hook
 
@@ -6,7 +6,9 @@ A Uniswap v4 hook that turns a single pool into an N-asset stablecoin AMM. All t
 
 > **Impermanent loss and yield.** Orbital is built to reduce impermanent loss for stablecoin LPs. Liquidity concentrated near the peg keeps IL close to zero while earning more fees per dollar, and if a coin breaks its peg the pool fences it off automatically, capping the tail loss that drains Curve-style stable LPs.
 
-Live on **Monad testnet** · 121 tests passing
+Live on **Monad testnet** (chainId 10143) · 121 tests passing
+
+**App → <https://orbital-hook.vercel.app/>**  ·  **Hook → [`0x63deB95a…6A88`](https://testnet.monadscan.com/address/0x63deB95aFa4EED08271831750059CD4e42e76A88)**
 
 > **Provenance.** The core hook and math libraries were originally built by us for UHI9 ([Oxkai/Orbital.Hook](https://github.com/Oxkai/Orbital.Hook), May to June 2026). This repo is the Monad line of work: chain-aware deployment, the live Monad testnet stack, and everything that follows.
 
@@ -63,8 +65,10 @@ All of this happens inside a single `unlock` frame. The PoolManager hands contro
 LP ─► hook.addLiquidity(k, r, maxAmounts)         (LP calls the hook, not the PoolManager)
         └─ poolManager.unlock(MINT, …)
              └─ unlockCallback (only callable by PoolManager):
-                  • compute equal-price deposit amounts for radius r
-                  • update reserves / sumX / sumXSq / rInt  (the torus)
+                  • deposit = xBase(r) − xMin(r, k)     (real, what the LP pays)
+                    credit  = xBase(r)                  (virtual, what the curve sees)
+                  • reserves += deposit ; virtualOffset += xMin
+                  • update sumX / sumXSq / rInt from the credit  (the torus)
                   • for each asset:
                        settle()  ← pull the LP's ERC-20 into the PoolManager
                        mint()    → convert the +delta into claim tokens held by the hook
@@ -220,17 +224,32 @@ UHI/
 
 Monad has no canonical Uniswap v4 deployment yet, so the script deploys its own `PoolManager` via hookmate and registers the six pair pools against it. On Monad mainnet (chainId 143) the same script picks up the canonical v4 `PoolManager` at `0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e` instead.
 
+**Network**
+
+| | |
+|---|---|
+| Chain ID | `10143` |
+| RPC | <https://testnet-rpc.monad.xyz> |
+| Explorer | <https://testnet.monadscan.com> |
+| Currency | MON |
+| Faucet | <https://faucet.monad.xyz> |
+
+**Contracts** — every address links to MonadScan.
+
 | Contract | Address |
 |---|---|
-| [OrbitalHook](orbitalHook/src/OrbitalHook.sol) | `0x63deB95aFa4EED08271831750059CD4e42e76A88` |
-| PoolManager (v4, self-deployed) | `0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7` |
-| USDC (mock) | `0xD69710c36246972e8e0543ACeb397209f75E8298` |
-| USDT (mock) | `0x6ba8eD116B34AD23E8Ad936cf60A7BAa33F8FD1F` |
-| DAI (mock) | `0xA105c458C0e88d88eE3C55B2cae711C13631d67e` |
-| FRAX (mock) | `0x94B5be428FCC1000FdBbc556fE468310f556126d` |
-| Admin / owner | `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39` |
+| [OrbitalHook](orbitalHook/src/OrbitalHook.sol) | [`0x63deB95aFa4EED08271831750059CD4e42e76A88`](https://testnet.monadscan.com/address/0x63deB95aFa4EED08271831750059CD4e42e76A88) |
+| PoolManager (v4, self-deployed) | [`0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7`](https://testnet.monadscan.com/address/0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7) |
+| SwapRouter (v4Router04) | [`0xC30819b8ac12B5d12751b83cFfebD6F0bFa0b53E`](https://testnet.monadscan.com/address/0xC30819b8ac12B5d12751b83cFfebD6F0bFa0b53E) |
+| V4Quoter | [`0x3f53c9ae1ae5D34D8A89986ea456da8e69916725`](https://testnet.monadscan.com/address/0x3f53c9ae1ae5D34D8A89986ea456da8e69916725) |
+| Permit2 (canonical) | [`0x000000000022D473030F116dDEE9F6B43aC78BA3`](https://testnet.monadscan.com/address/0x000000000022D473030F116dDEE9F6B43aC78BA3) |
+| USDC (mock) | [`0xD69710c36246972e8e0543ACeb397209f75E8298`](https://testnet.monadscan.com/address/0xD69710c36246972e8e0543ACeb397209f75E8298) |
+| USDT (mock) | [`0x6ba8eD116B34AD23E8Ad936cf60A7BAa33F8FD1F`](https://testnet.monadscan.com/address/0x6ba8eD116B34AD23E8Ad936cf60A7BAa33F8FD1F) |
+| DAI (mock) | [`0xA105c458C0e88d88eE3C55B2cae711C13631d67e`](https://testnet.monadscan.com/address/0xA105c458C0e88d88eE3C55B2cae711C13631d67e) |
+| FRAX (mock) | [`0x94B5be428FCC1000FdBbc556fE468310f556126d`](https://testnet.monadscan.com/address/0x94B5be428FCC1000FdBbc556fE468310f556126d) |
+| Admin / owner | [`0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39`](https://testnet.monadscan.com/address/0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39) |
 
-Seeded with **~$20M of real capital across 4 ticks** at depeg bounds 0.999 / 0.995 / 0.99 / 0.98, all interior. Because the ticks are concentrated, that capital supports an interior radius of **2.25e9**, roughly 225x what the same dollars would buy full-range.
+Seeded with **~$20M of real capital** at depeg bounds 0.999 / 0.995 / 0.99 / 0.98, then exercised by [`SeedActivity.s.sol`](orbitalHook/script/SeedActivity.s.sol), which runs a swap wave and adds a fifth tick. Live state: **5 ticks, all interior (`kBound = 0`)**, interior radius **2.252e9** against ~5.08M of real reserves per asset — a `virtualOffset` of ~1.12e9 per asset carries the difference. That is roughly **154x** what the same capital would buy full-range.
 
 ### Measured slippage (live, via V4Quoter)
 
@@ -298,4 +317,4 @@ Foundry uses `via_ir = true` (required by the Orbital math libraries). Clone wit
 
 - Paradigm Orbital paper: <https://www.paradigm.xyz/2025/06/orbital>
 - Uniswap v4 docs: <https://docs.uniswap.org/contracts/v4/overview>
-- Our standalone Orbital AMM that shares the same engine: [`../contracts`](../contracts) (parent project)
+- Original UHI9 build of the hook and math libraries: <https://github.com/Oxkai/Orbital.Hook>

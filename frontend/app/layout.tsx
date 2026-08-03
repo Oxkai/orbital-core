@@ -32,10 +32,10 @@ const SITE_NAME = "Orbital";
 const SITE_URL = "https://orbital-hook.vercel.app";
 const TITLE = "Orbital - Maltitoken stablecoin AMM on Monad";
 // Figures are the ones measured against the live Monad testnet deployment:
-// ~226x capital efficiency, 0.0145% slippage on a $100k swap. Keep them in
+// ~154x capital efficiency, 0.0145% slippage on a $100k swap. Keep them in
 // step with the README table rather than quoting the paper's headline number.
 const DESCRIPTION =
-  "One pool, N stablecoins. A Uniswap v4 hook that prices a whole basket of dollars on the Orbital sphere, with ~226x the capital efficiency of a full-range pool and automatic depeg isolation. Live on Monad testnet.";
+  "One pool, N stablecoins. A Uniswap v4 hook that prices a whole basket of dollars on the Orbital sphere, with ~154x the capital efficiency of a full-range pool and automatic depeg isolation. Live on Monad testnet.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

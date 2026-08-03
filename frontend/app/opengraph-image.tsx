@@ -47,7 +47,7 @@ export default function OpengraphImage() {
           </div>
           <div style={{ fontSize: 28, color: "#8A8A8A", letterSpacing: "-0.01em", lineHeight: 1.35 }}>
             A Uniswap v4 hook pricing a basket of dollars on the Orbital sphere.
-            ~226x the capital efficiency of a full-range pool.
+            ~154x the capital efficiency of a full-range pool.
           </div>
         </div>
 
