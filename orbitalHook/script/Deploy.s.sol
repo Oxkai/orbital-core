@@ -49,15 +49,15 @@ contract DeployScript is Script {
     string[4] internal SYMBOLS = ["USDC", "USDT", "DAI", "FRAX"];
     string[4] internal NAMES = ["USD Coin", "Tether USD", "Dai Stablecoin", "Frax"];
 
-    // Deep, tiered seed: ~$10M rInt (~$20M TVL) across four depeg-bound tiers.
-    // Bounds are intentionally WIDE (0.95 .. 0.80) so they sit well above the
-    // equal-price point — gentle demo swaps keep αNorm near peg and never reach
-    // the tightest tier, so no tick crosses to boundary.
+    // Tiered seed: ~$20M of real capital buying an interior radius of 2.25e9.
+    // Bounds sit tight against the peg, which is where the concentration comes
+    // from — an LP funds only `xBase - xMin`, so a tighter bound buys far more
+    // radius per dollar (see `virtualOffset` in OrbitalHook).
     //   tier r (radius)          depeg bound
-    //   4,000,000                0.95
-    //   3,000,000                0.90
-    //   2,000,000                0.85
-    //   1,000,000                0.80
+    //   900,000,000              0.999
+    //   675,000,000              0.995
+    //   450,000,000              0.99
+    //   225,000,000              0.98
     function _tierR(uint256 i) internal pure returns (uint256) {
         if (i == 0) return 900_000_000 ether;
         if (i == 1) return 675_000_000 ether;
@@ -117,8 +117,6 @@ contract DeployScript is Script {
     function _canonicalPoolManager() internal view returns (address) {
         // Monad mainnet — v4 is live, so the hook plugs into real infra.
         if (block.chainid == 143) return 0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e;
-        // Unichain Sepolia.
-        if (block.chainid == 1301) return 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
         // Monad testnet has no canonical v4. This is the PoolManager our first
         // deploy brought up via hookmate — reuse it, since the deployer lands on
         // a deterministic address and a second run would CREATE2-collide.

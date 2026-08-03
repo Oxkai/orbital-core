@@ -273,30 +273,6 @@ forge script script/Deploy.s.sol --rpc-url monad_testnet --private-key $PRIVATE_
 
 ---
 
-## Previously deployed on Unichain Sepolia (chainId 1301)
-
-Uniswap v4 is canonically deployed on Unichain, so the hook plugs into the official `PoolManager`, `SwapRouter`, and `V4Quoter` rather than a self-hosted stack.
-
-| Contract | Address |
-|---|---|
-| [OrbitalHook](orbitalHook/src/OrbitalHook.sol) | `0x08E32551Cf10f042721E1387e7Be8538beC02A88` |
-| PoolManager (v4, canonical) | `0x00B036B58a818B1BC34d502D3fE730Db729e62AC` |
-| V4Quoter (canonical) | `0x56DCD40A3F2d466F48e7F48bDBE5Cc9B92Ae4472` |
-| SwapRouter (v4) | `0xb974DE781ec4bCf09d91Db13A3aF74d14FfE7540` |
-| Permit2 (canonical) | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
-| USDC (mock) | `0x26301b1f7Ec55Cea35111b79E1Df986c314B4a93` |
-| USDT (mock) | `0x37FC8Eade109847a5CA65cf25A7Cf8a1d003fEEd` |
-| DAI (mock) | `0x35ff498cE5FC23Ba5536044F8358C194386c9832` |
-| FRAX (mock) | `0x76b1B6078f392Ef3101f7b01E7B593aB1BeA9d6b` |
-| Admin / owner | `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39` |
-
-The pool is seeded with about **$24M TVL across 5 ticks**, all interior. The initial seed places four tiers at depeg bounds 0.95 / 0.90 / 0.85 / 0.80, and the activity simulation adds a fifth tick after a balanced swap wave.
-
-- Live app: <https://orbital-hook.vercel.app/>
-- Hook explorer: <https://sepolia.uniscan.xyz/address/0x08E32551Cf10f042721E1387e7Be8538beC02A88>
-
----
-
 ## Getting started
 
 ```bash

@@ -162,7 +162,7 @@ forge script script/Deploy.s.sol \
   --private-key $PRIVATE_KEY
 ```
 
-`Deploy.s.sol` mines the hook address (`HookMiner` from `lib/uniswap-hooks`), deploys the four mock tokens, initializes the 6 pair pools, and seeds tiered liquidity across depeg bounds 0.999 / 0.995 / 0.99 / 0.98. It resolves the `PoolManager` per chain: canonical v4 on Monad mainnet and Unichain Sepolia, the existing self-deployed instance on Monad testnet, and a fresh one on local anvil.
+`Deploy.s.sol` mines the hook address (`HookMiner` from `lib/uniswap-hooks`), deploys the four mock tokens, initializes the 6 pair pools, and seeds tiered liquidity across depeg bounds 0.999 / 0.995 / 0.99 / 0.98. It resolves the `PoolManager` per chain: canonical v4 on Monad mainnet, the existing self-deployed instance on Monad testnet, and a fresh one on local anvil.
 
 ---
 

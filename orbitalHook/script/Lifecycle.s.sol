@@ -12,10 +12,10 @@ import {IUniswapV4Router04} from "hookmate/interfaces/router/IUniswapV4Router04.
 import {OrbitalHook} from "../src/OrbitalHook.sol";
 import {TickLib} from "../src/libraries/TickLib.sol";
 
-/// @notice Full LP lifecycle exercise on the live Unichain Sepolia pool:
+/// @notice Full LP lifecycle exercise on the live Monad testnet pool:
 ///         add at a new tick → swaps → collect fees → partial burn → full burn
 ///         → verify free-list reuse → second add at a different k → burn.
-/// @dev    forge script script/Lifecycle.s.sol --rpc-url <unichain-sepolia> \
+/// @dev    forge script script/Lifecycle.s.sol --rpc-url monad_testnet \
 ///             --broadcast --slow --private-key $PRIVATE_KEY
 contract LifecycleScript is Script {
     OrbitalHook internal constant HOOK = OrbitalHook(0x405E3C4541077C501854082cf3256926BeF6AA88);

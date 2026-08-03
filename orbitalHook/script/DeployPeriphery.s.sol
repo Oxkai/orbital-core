@@ -10,21 +10,16 @@ import {V4Quoter} from "@uniswap/v4-periphery/src/lens/V4Quoter.sol";
 /// @notice Deploys the v4 periphery the frontend needs (swap router + quoter)
 ///         against an already-deployed PoolManager. Run after Deploy.s.sol.
 ///
-/// @dev Set POOL_MANAGER + PERMIT2 below to the addresses from the Deploy run.
-///         forge script script/DeployPeriphery.s.sol --rpc-url <unichain-sepolia> \
+/// @dev    forge script script/DeployPeriphery.s.sol --rpc-url monad_testnet \
 ///             --broadcast --slow --private-key $PRIVATE_KEY
 contract DeployPeripheryScript is Script {
-    // Canonical Uniswap v4 PoolManager on Unichain Sepolia.
-    // Source: https://developers.uniswap.org/contracts/v4/deployments
+    // Monad has no separate v4 SwapRouter, and the SwapWidget and SeedActivity
+    // both use the v4-specific Router ABI — so this deploys a lightweight one
+    // pointed at the PoolManager, which keeps the frontend code intact.
     //
-    // Unichain Sepolia has canonical PoolManager + UniversalRouter + Quoter,
-    // but NO separate v4 SwapRouter. Our SwapWidget and SeedActivity use the
-    // v4-specific Router ABI, so run this script to deploy a lightweight one
-    // pointed at the canonical PoolManager — keeps the frontend code intact.
-    /// @dev Defaults to the Unichain Sepolia canonical PoolManager. Override per
-    ///      chain with `POOL_MANAGER=0x… forge script …` — on Monad testnet this
-    ///      is the PoolManager that Deploy.s.sol self-deployed.
-    address internal constant DEFAULT_POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
+    /// @dev Defaults to the Monad testnet PoolManager. Override per chain with
+    ///      `POOL_MANAGER=0x… forge script …`.
+    address internal constant DEFAULT_POOL_MANAGER = 0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7;
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     function run() external {
