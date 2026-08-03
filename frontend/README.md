@@ -1,6 +1,6 @@
-# Orbital — Frontend
+# Orbital Frontend
 
-The web app for **Orbital**, an N-asset stableswap built as a **Uniswap v4 hook**, deployed on **Monad testnet (chainId 10143)**. Swap, provide liquidity, and inspect the live pool — wired directly to the on-chain hook.
+The web app for **Orbital**, an N-asset stableswap built as a **Uniswap v4 hook**, deployed on **Monad testnet (chainId 10143)**. Swap, provide liquidity, and inspect the live pool, wired directly to the on-chain hook.
 
 **Live → https://orbital-hook.vercel.app/**  ·  Hook [`0x63deB95a…6A88`](https://testnet.monadscan.com/address/0x63deB95aFa4EED08271831750059CD4e42e76A88)
 
@@ -53,8 +53,8 @@ Deploy this folder as its own Vercel project:
 
 ```
 app/
-  layout.tsx              root layout — fonts, theme vars, KaTeX css
-  page.tsx                home page — assembles all sections
+  layout.tsx              root layout: fonts, theme vars, KaTeX css
+  page.tsx                home page: assembles all sections
   app/                    the dApp
     swap/                 swap widget (V4Quoter + v4 router)
     pools/  pool/[address]  pool list + detail + add-liquidity
@@ -72,4 +72,4 @@ lib/
 constants/                color themes (dark/light) + type scale
 ```
 
-> Research deployment on Monad testnet — not audited, not production.
+> Research deployment on Monad testnet, not audited, not production.

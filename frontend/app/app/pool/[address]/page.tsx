@@ -674,7 +674,7 @@ function shortAddr(addr: string) {
 export default function PoolDetailPage({ params }: { params: Promise<{ address: string }> }) {
   const { address: poolAddr } = use(params);
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
-  const { pool, isLoading } = usePool(poolAddr as Address);
+  const { pool, isLoading } = usePool(poolAddr as Address, { withVolume: true });
 
   const pairLabel = pool ? pool.tokens.map(t => t.symbol).join(" / ") : "Pool";
 

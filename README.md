@@ -234,7 +234,7 @@ Monad has no canonical Uniswap v4 deployment yet, so the script deploys its own 
 | Currency | MON |
 | Faucet | <https://faucet.monad.xyz> |
 
-**Contracts** — every address links to MonadScan.
+**Contracts.** Every address links to MonadScan.
 
 | Contract | Address |
 |---|---|
@@ -249,7 +249,7 @@ Monad has no canonical Uniswap v4 deployment yet, so the script deploys its own 
 | FRAX (mock) | [`0x94B5be428FCC1000FdBbc556fE468310f556126d`](https://testnet.monadscan.com/address/0x94B5be428FCC1000FdBbc556fE468310f556126d) |
 | Admin / owner | [`0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39`](https://testnet.monadscan.com/address/0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39) |
 
-Seeded with **~$20M of real capital** at depeg bounds 0.999 / 0.995 / 0.99 / 0.98, then exercised by [`SeedActivity.s.sol`](orbitalHook/script/SeedActivity.s.sol), which runs a swap wave and adds a fifth tick. Live state: **5 ticks, all interior (`kBound = 0`)**, interior radius **2.252e9** against ~5.08M of real reserves per asset — a `virtualOffset` of ~1.12e9 per asset carries the difference. That is roughly **154x** what the same capital would buy full-range.
+Seeded with **~$20M of real capital** at depeg bounds 0.999 / 0.995 / 0.99 / 0.98, then exercised by [`SeedActivity.s.sol`](orbitalHook/script/SeedActivity.s.sol), which runs a swap wave and adds a fifth tick. Live state: **5 ticks, all interior (`kBound = 0`)**, interior radius **2.252e9** against ~5.08M of real reserves per asset, a `virtualOffset` of ~1.12e9 per asset carries the difference. That is roughly **154x** what the same capital would buy full-range.
 
 ### Measured slippage (live, via V4Quoter)
 
@@ -262,7 +262,7 @@ Seeded with **~$20M of real capital** at depeg bounds 0.999 / 0.995 / 0.99 / 0.9
 
 The 0.0100% floor is the 1bp pool fee. Pure price impact on a $100k swap is 0.0045%.
 
-**How the concentration works.** An LP funds only `xBase - xMin`: the reserves between the equal-price point and the level where their tick hits its depeg bound. The curve is credited the full `xBase`, and `virtualOffset` carries the difference. The unfunded portion is never callable, because the tick crosses to boundary at `xMin` and stops trading — the same virtual-reserve argument behind Uniswap v3. `reserves[]` remains the real, custodied balance, so pool solvency is unaffected. All six pair pools (`USDC/USDT`, `USDC/DAI`, `USDC/FRAX`, `USDT/DAI`, `USDT/FRAX`, `DAI/FRAX`) share the one engine state.
+**How the concentration works.** An LP funds only `xBase - xMin`: the reserves between the equal-price point and the level where their tick hits its depeg bound. The curve is credited the full `xBase`, and `virtualOffset` carries the difference. The unfunded portion is never callable, because the tick crosses to boundary at `xMin` and stops trading, the same virtual-reserve argument behind Uniswap v3. `reserves[]` remains the real, custodied balance, so pool solvency is unaffected. All six pair pools (`USDC/USDT`, `USDC/DAI`, `USDC/FRAX`, `USDT/DAI`, `USDT/FRAX`, `DAI/FRAX`) share the one engine state.
 
 Redeploy with:
 

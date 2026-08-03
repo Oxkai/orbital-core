@@ -11,13 +11,13 @@ const SWAP_EVENT = parseAbiItem(
   "event Swap(address indexed sender, uint8 assetIn, uint8 assetOut, uint256 amountIn, uint256 amountOut)"
 ) as AbiEvent;
 
-export function useVolume24h(fee: number) {
+export function useVolume24h(fee: number, enabled: boolean = true) {
   const client = usePublicClient();
   const [volume24h, setVolume24h] = useState(0);
   const [fees24h,   setFees24h]   = useState(0);
 
   useEffect(() => {
-    if (!client) return;
+    if (!client || !enabled) return;
     let cancelled = false;
 
     async function load() {
@@ -29,7 +29,7 @@ export function useVolume24h(fee: number) {
         // volume, not a true 24h figure. Windows are fetched in parallel waves
         // rather than one at a time, which is what makes a wider span
         // affordable: 12k blocks is roughly 80 minutes of history.
-        const RECENT_BLOCKS = 12_000n;
+        const RECENT_BLOCKS = 3_000n;
         const CHUNK = 100n;
         const WAVE = 10;
         const start = latest - RECENT_BLOCKS > DEPLOY_BLOCK ? latest - RECENT_BLOCKS : DEPLOY_BLOCK;
@@ -65,9 +65,9 @@ export function useVolume24h(fee: number) {
     }
 
     load();
-    const interval = setInterval(load, 60_000);
+    const interval = setInterval(function(){ if (!document.hidden) load(); }, 300_000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [client, fee]);
+  }, [client, fee, enabled]);
 
   return { volume24h, fees24h };
 }

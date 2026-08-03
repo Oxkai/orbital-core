@@ -9,7 +9,10 @@ import { useVolume24h } from "@/lib/hooks/useVolume24h";
 
 const WAD = 1e18;
 
-export function usePool(poolAddress: Address) {
+/** `withVolume` runs a log scan costing tens of requests — only the pool
+ *  detail page shows the number, and enabling it everywhere starved the
+ *  balance and reserve reads on the public RPC. Off by default. */
+export function usePool(poolAddress: Address, opts: { withVolume?: boolean } = {}) {
   // Step 1 — static pool scalars
   const step1 = useReadContracts({
     contracts: [
@@ -78,7 +81,7 @@ export function usePool(poolAddress: Address) {
   const rInt   = Number(slot0?.[2] ?? 0n) / WAD;
   const sumX   = slot0?.[0] ?? 0n;
 
-  const { volume24h, fees24h } = useVolume24h(fee);
+  const { volume24h, fees24h } = useVolume24h(fee, opts.withVolume === true);
 
   const pool: Pool | null = ready && step2.data && addressesResolved ? {
     address:             poolAddress,

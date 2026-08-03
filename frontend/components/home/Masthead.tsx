@@ -3,13 +3,15 @@ import { Emphasized } from "./Emphasized";
 import { SectionLabel } from "./SectionLabel";
 
 const INDEX = [
-  ["01", "Principles"],
-  ["02", "Mechanics"],
-  ["03", "Architecture"],
-  ["04", "Simulation"],
-  ["05", "Versus"],
-  ["06", "Deployed"],
-  ["07", "References"],
+  ["01", "Problem"],
+  ["02", "Solution"],
+  ["03", "Principles"],
+  ["04", "Mechanics"],
+  ["05", "Architecture"],
+  ["06", "Simulation"],
+  ["07", "Versus"],
+  ["08", "Deployed"],
+  ["09", "References"],
 ] as const;
 
 export function Masthead() {
