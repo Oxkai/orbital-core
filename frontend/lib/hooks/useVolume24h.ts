@@ -6,7 +6,6 @@ import { parseAbiItem, type AbiEvent } from "viem";
 import { POOL_ADDRESS, DEPLOY_BLOCK } from "@/lib/contracts";
 
 const WAD = 1e18;
-const SECONDS_PER_DAY = 86_400;
 
 const SWAP_EVENT = parseAbiItem(
   "event Swap(address indexed sender, uint8 assetIn, uint8 assetOut, uint256 amountIn, uint256 amountOut)"
@@ -25,21 +24,35 @@ export function useVolume24h(fee: number) {
       try {
         const latest = await client!.getBlockNumber();
 
-        // the public RPC caps getLogs at 100 blocks, so we can't scan a
-        // full 24h window cheaply. Instead scan a bounded recent window
-        // (RECENT_BLOCKS) in 100-block chunks and report it as recent volume.
-        const RECENT_BLOCKS = 1_500n;
+        // The public RPC caps getLogs at 100 blocks, and Monad's ~0.4s blocks
+        // mean 100 blocks is only ~40s of chain time — so this is recent
+        // volume, not a true 24h figure. Windows are fetched in parallel waves
+        // rather than one at a time, which is what makes a wider span
+        // affordable: 12k blocks is roughly 80 minutes of history.
+        const RECENT_BLOCKS = 12_000n;
         const CHUNK = 100n;
+        const WAVE = 10;
         const start = latest - RECENT_BLOCKS > DEPLOY_BLOCK ? latest - RECENT_BLOCKS : DEPLOY_BLOCK;
 
-        let vol = 0;
+        const windows: { from: bigint; to: bigint }[] = [];
         for (let from = start; from <= latest; from += CHUNK) {
+          windows.push({ from, to: from + CHUNK - 1n < latest ? from + CHUNK - 1n : latest });
+        }
+
+        let vol = 0;
+        for (let i = 0; i < windows.length; i += WAVE) {
           if (cancelled) return;
-          const to = from + CHUNK - 1n < latest ? from + CHUNK - 1n : latest;
-          const logs = await client!.getLogs({ address: POOL_ADDRESS, event: SWAP_EVENT, fromBlock: from, toBlock: to });
-          for (const log of logs) {
-            const { amountIn } = log.args as { amountIn: bigint };
-            vol += Number(amountIn) / WAD;
+          const batches = await Promise.all(
+            windows.slice(i, i + WAVE).map(w =>
+              client!.getLogs({ address: POOL_ADDRESS, event: SWAP_EVENT, fromBlock: w.from, toBlock: w.to })
+                .catch(() => []),
+            ),
+          );
+          for (const logs of batches) {
+            for (const log of logs) {
+              const { amountIn } = log.args as { amountIn: bigint };
+              vol += Number(amountIn) / WAD;
+            }
           }
         }
 

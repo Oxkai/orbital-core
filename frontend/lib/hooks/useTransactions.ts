@@ -10,10 +10,14 @@ import { POOL_ADDRESSES, TOKEN_META, DEPLOY_BLOCK } from "@/lib/contracts";
 // NEXT_PUBLIC_LOG_CHUNK to widen it and the scan gets proportionally faster.
 const CHUNK = BigInt(process.env.NEXT_PUBLIC_LOG_CHUNK ?? 100);
 
-// With a 100-block chunk, walking back to the deploy block would be hundreds of
-// sequential round-trips on a pool with little history. Bound each scan and let
-// `loadMore` continue from the cursor instead of blocking the first paint.
-const MAX_CHUNKS_PER_SCAN = 40;
+// Monad produces ~0.4s blocks, so a 100-block window is only ~40s of chain
+// time and any real history needs a lot of windows. Walking them one at a time
+// costs ~0.8s each; issuing them in waves collapses a 40-chunk scan from ~32s
+// to ~4s. Kept modest so a burst doesn't trip the public node's rate limit.
+const WAVE = 10;
+
+// Blocks covered per scan. `loadMore` continues from the returned cursor.
+const MAX_CHUNKS_PER_SCAN = 120;
 
 const PAGE_SIZE = 20;
 const POLL_MS = 15_000;
@@ -65,32 +69,55 @@ async function fetchTimestamps(client: Client, blocks: bigint[]): Promise<Map<bi
   return map;
 }
 
-// One ≤CHUNK-block window: pull all four events from the hook in parallel.
+// One ≤CHUNK-block window. viem's `events` option builds a single topic-OR
+// filter and decodes for us, so all four event types cost one request instead
+// of four. That matters more than it looks: the public node rate-limits per
+// request, and four-per-chunk was the main source of the partial failures.
 async function fetchChunk(client: Client, from: bigint, to: bigint, sym: (i: number) => string): Promise<RawTx[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [s, m, b, c]: any[][] = await Promise.all([
-    client.getLogs({ address: HOOK, event: SWAP, fromBlock: from, toBlock: to }),
-    client.getLogs({ address: HOOK, event: MINT, fromBlock: from, toBlock: to }),
-    client.getLogs({ address: HOOK, event: BURN, fromBlock: from, toBlock: to }),
-    client.getLogs({ address: HOOK, event: COLLECT, fromBlock: from, toBlock: to }),
-  ]);
+  const logs = await client.getLogs({
+    address: HOOK,
+    events: [SWAP, MINT, BURN, COLLECT],
+    fromBlock: from,
+    toBlock: to,
+  });
+
   const out: RawTx[] = [];
-  for (const log of s) {
-    const a = log.args;
-    out.push({ type: "Swap", hash: log.transactionHash, blockNumber: log.blockNumber, actor: a.sender,
-      amountIn: `${fmt(a.amountIn)} ${sym(Number(a.assetIn))}`, amountOut: `${fmt(a.amountOut)} ${sym(Number(a.assetOut))}` });
+  for (const log of logs) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const a = (log as any).args ?? {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const name = (log as any).eventName as string | undefined;
+    const base = { hash: log.transactionHash!, blockNumber: log.blockNumber! };
+
+    switch (name) {
+      case "Swap":
+        out.push({ ...base, type: "Swap", actor: a.sender,
+          amountIn: `${fmt(a.amountIn)} ${sym(Number(a.assetIn))}`,
+          amountOut: `${fmt(a.amountOut)} ${sym(Number(a.assetOut))}` });
+        break;
+      case "Mint":
+        out.push({ ...base, type: "Add", actor: a.recipient, amountIn: `$${fmt(a.rWad)}`, amountOut: "" });
+        break;
+      case "Burn":
+        out.push({ ...base, type: "Remove", actor: a.owner, amountIn: `$${fmt(a.rWad)} tick #${a.tickIdx}`, amountOut: "" });
+        break;
+      case "Collect":
+        out.push({ ...base, type: "Collect", actor: a.owner, amountIn: `tick #${a.tickIdx}`, amountOut: "" });
+        break;
+    }
   }
-  for (const log of m) {
-    const a = log.args;
-    out.push({ type: "Add", hash: log.transactionHash, blockNumber: log.blockNumber, actor: a.recipient, amountIn: `$${fmt(a.rWad)}`, amountOut: "" });
-  }
-  for (const log of b) {
-    const a = log.args;
-    out.push({ type: "Remove", hash: log.transactionHash, blockNumber: log.blockNumber, actor: a.owner, amountIn: `$${fmt(a.rWad)} tick #${a.tickIdx}`, amountOut: "" });
-  }
-  for (const log of c) {
-    const a = log.args;
-    out.push({ type: "Collect", hash: log.transactionHash, blockNumber: log.blockNumber, actor: a.owner, amountIn: `tick #${a.tickIdx}`, amountOut: "" });
+  return out;
+}
+
+/** Window boundaries for `count` chunks walking backward from `startTo`. */
+function windowsBack(startTo: bigint, count: number): { from: bigint; to: bigint }[] {
+  const out: { from: bigint; to: bigint }[] = [];
+  let to = startTo;
+  for (let i = 0; i < count && to >= DEPLOY_BLOCK; i++) {
+    const from = to - CHUNK + 1n < DEPLOY_BLOCK ? DEPLOY_BLOCK : to - CHUNK + 1n;
+    out.push({ from, to });
+    if (from === DEPLOY_BLOCK) break;
+    to = from - 1n;
   }
   return out;
 }
@@ -117,18 +144,29 @@ export function useTransactions(poolTokens: { symbol: string; address: string }[
 
   // Scan backward from `startTo` in CHUNK windows until ≥ limit records or deploy.
   const scanBack = useCallback(async (startTo: bigint, limit: number) => {
+    const windows = windowsBack(startTo, MAX_CHUNKS_PER_SCAN);
     const acc: RawTx[] = [];
-    let to = startTo;
-    let chunks = 0;
-    while (acc.length < limit && to >= DEPLOY_BLOCK && chunks < MAX_CHUNKS_PER_SCAN) {
-      const from = to - CHUNK + 1n < DEPLOY_BLOCK ? DEPLOY_BLOCK : to - CHUNK + 1n;
-      acc.push(...await fetchChunk(client!, from, to, sym));
-      chunks++;
-      if (from === DEPLOY_BLOCK) { to = DEPLOY_BLOCK - 1n; break; }
-      to = from - 1n;
+    let covered = 0;
+
+    // Walk the windows in parallel waves. Stop as soon as a wave has produced
+    // enough records — the pool is usually quiet, so most scans run the whole
+    // budget and the wave is what keeps that to a few seconds instead of ~90.
+    for (let i = 0; i < windows.length; i += WAVE) {
+      const wave = windows.slice(i, i + WAVE);
+      const results = await Promise.all(
+        wave.map(w => fetchChunk(client!, w.from, w.to, sym).catch(() => [] as RawTx[])),
+      );
+      results.forEach(r => acc.push(...r));
+      covered = i + wave.length;
+      if (acc.length >= limit) break;
     }
+
     acc.sort((a, b) => (a.blockNumber < b.blockNumber ? 1 : -1));
-    return { records: await withTs(acc), nextCursor: to >= DEPLOY_BLOCK ? to : null };
+
+    // Resume below the deepest window actually scanned.
+    const last = windows[covered - 1];
+    const nextCursor = last && last.from > DEPLOY_BLOCK ? last.from - 1n : null;
+    return { records: await withTs(acc), nextCursor };
   }, [client, sym, withTs]);
 
   // Initial load + tail-only poll (only fetches blocks newer than headBlock).
@@ -161,12 +199,21 @@ export function useTransactions(poolTokens: { symbol: string; address: string }[
       try {
         const latest = await client!.getBlockNumber();
         if (latest <= headBlock.current) return;
-        let from = headBlock.current + 1n;
-        const fresh: RawTx[] = [];
-        while (from <= latest) {
+        // Build the tail windows up front, then fetch them in waves. A tab left
+        // idle can fall thousands of blocks behind on Monad, and walking that
+        // back one window at a time would stall every poll.
+        const tail: { from: bigint; to: bigint }[] = [];
+        for (let from = headBlock.current + 1n; from <= latest; ) {
           const to = from + CHUNK - 1n > latest ? latest : from + CHUNK - 1n;
-          fresh.push(...await fetchChunk(client!, from, to, sym));
+          tail.push({ from, to });
           from = to + 1n;
+        }
+        const fresh: RawTx[] = [];
+        for (let i = 0; i < tail.length; i += WAVE) {
+          const results = await Promise.all(
+            tail.slice(i, i + WAVE).map(w => fetchChunk(client!, w.from, w.to, sym).catch(() => [] as RawTx[])),
+          );
+          results.forEach(r => fresh.push(...r));
         }
         headBlock.current = latest;
         if (fresh.length === 0 || cancelled) return;
