@@ -4,6 +4,7 @@ import {
   ROBINHOOD_TESTNET_ID,
   ETHEREUM_SEPOLIA_ID,
   BASE_SEPOLIA_ID,
+  MONAD_TESTNET_ID,
 } from "@/lib/crosschain";
 
 /** Chain badge, drawn as ONE svg: rounded-square plate plus the network glyph,
@@ -55,6 +56,13 @@ const CHAIN_ART: Record<number, ChainArt> = {
     glyph: [
       // Base mark, from Simple Icons (CC0), native 24x24 box.
       "M11.9 23.9C18.5 23.9 23.9 18.5 23.9 11.9S18.5 0 11.9 0C5.6 0 .5 4.8 0 10.9h15.9v2H0c.5 6.2 5.6 11 11.9 11z",
+    ],
+  },
+  [MONAD_TESTNET_ID]: {
+    plate: "#836EF9",
+    glyph: [
+      // Monad mark, renormalised into this 24x24 viewBox.
+      "M12 2.4c-2.65 0-9.6 6.95-9.6 9.6s6.95 9.6 9.6 9.6 9.6-6.95 9.6-9.6S14.65 2.4 12 2.4m-1.3 14.73c-1.03-.28-3.83-5.13-3.55-6.16.28-1.03 5.13-3.83 6.16-3.55 1.03.28 3.83 5.13 3.55 6.16-.28 1.03-5.13 3.83-6.16 3.55",
     ],
   },
   [ROBINHOOD_TESTNET_ID]: {

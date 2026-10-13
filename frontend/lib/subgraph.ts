@@ -6,8 +6,8 @@
  * The transactions feed used to be built by scanning `eth_getLogs` backwards in
  * 10,000-block windows, per chain, four event types at a time, then fetching a
  * block per record just to get a timestamp. That is slow, hammers public RPCs,
- * and hits their log-range caps: Unichain rejects anything over 10,000 blocks
- * and Base over 10,000, so the window size was already pinned to the limit.
+ * and hits their log-range caps: Base rejects anything over 10,000 blocks, so
+ * the window size was already pinned to the limit.
  *
  * The subgraph answers the same question in one round trip per chain, with
  * timestamps already attached, and adds fields the logs simply do not carry:
@@ -31,12 +31,6 @@ const ENDPOINTS: Record<number, { url?: string; hook: string } | undefined> = {
       process.env.NEXT_PUBLIC_SUBGRAPH_ARBITRUM ??
       "https://api.studio.thegraph.com/query/107768/orbital-arbitrum/v0.3.0",
     hook: "0xdEE6773E69611CfA1395Dc47cDd4Cca6E36CaA88",
-  },
-  1301: {
-    url:
-      process.env.NEXT_PUBLIC_SUBGRAPH_UNICHAIN ??
-      "https://api.studio.thegraph.com/query/107768/orbital-unichain/v0.3.0",
-    hook: "0x2ad0767A51fD05c2d150f0f60eE436a52bF76a88",
   },
 };
 

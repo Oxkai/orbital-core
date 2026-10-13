@@ -50,6 +50,7 @@ export const ARBITRUM_SEPOLIA_ID = 421614;
 export const ROBINHOOD_TESTNET_ID = 46630;
 export const ETHEREUM_SEPOLIA_ID = 11155111;
 export const BASE_SEPOLIA_ID = 84532;
+export const MONAD_TESTNET_ID = 10143;
 
 export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
   // Generated from orbitalHook/deployments.json - keep the two in step.
@@ -127,11 +128,29 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
       FRAX:  { symbol: "FRAX", address: "0xe6de3e3be032e391786754c824c5800ca010c54f", decimals: 18, index: 3 },
     },
   },
+  [MONAD_TESTNET_ID]: {
+    chainId: MONAD_TESTNET_ID,
+    name: "Monad Testnet",
+    short: "Monad",
+    explorer: "https://testnet.monadscan.com",
+    orbitalHook: "0x2Db3289884D575A7b49374F28d738DBF2dc42a88",
+    poolManager: "0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7",
+    swapRouter: "0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a",
+    quoter: "0x2f7A2DC7d74645A31CABb5466219CCAB70913377",
+    crossChainNote: "This deployment is same-chain only",
+    deployBlock: 70679352n,
+    assets: {
+      USDC:  { symbol: "USDC", address: "0x0a29619e8580d90b14200a734faad4677e9d1645", decimals: 6 , index: 0 },
+      USDT:  { symbol: "USDT", address: "0x45dc287a307eccf7426cb2377ee2865457592fae", decimals: 6 , index: 1 },
+      FRAX:  { symbol: "FRAX", address: "0x871290c7a788395f1ce5f7cdd69917696e0c352a", decimals: 18, index: 2 },
+      DAI:   { symbol: "DAI", address: "0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4", decimals: 18, index: 3 },
+    },
+  },
 };
 
 /// The chain the single-chain pages (pools, positions, transactions) default to,
 /// and the swap widget's opening pair. Robinhood Chain is the home of this
-/// hook; the other two carry the same deployment, and between them the
+/// hook; the other four carry the same deployment, and between them the
 /// cross-chain routes. One constant to move if that changes.
 export const PRIMARY_CHAIN_ID = ROBINHOOD_TESTNET_ID;
 
@@ -144,13 +163,14 @@ export const PRIMARY_CHAIN_ID = ROBINHOOD_TESTNET_ID;
 /// decisions, so they get different constants.
 ///
 /// The opening pair is same-chain, so the widget never opens on a route that
-/// depends on a cross-chain settlement — which matters more here, since
-/// Robinhood has no Hyperlane mailbox and so no cross-chain settler at all.
-export const DEFAULT_SWAP_CHAIN_ID = ROBINHOOD_TESTNET_ID;
+/// depends on a cross-chain settlement — which matters more here, since Monad
+/// has no Hyperlane mailbox and so no cross-chain settler at all.
+export const DEFAULT_SWAP_CHAIN_ID = MONAD_TESTNET_ID;
 
 /// Display order in the token dropdown, primary chain first.
 export const CHAIN_IDS = [
   ROBINHOOD_TESTNET_ID,
+  MONAD_TESTNET_ID,
   ARBITRUM_SEPOLIA_ID,
   BASE_SEPOLIA_ID,
   ETHEREUM_SEPOLIA_ID,
