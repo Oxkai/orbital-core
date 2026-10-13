@@ -1,0 +1,20 @@
+{
+  "arbitrum-sepolia": {
+    "OrbitalHook": {
+      "address": "0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88",
+      "startBlock": 318516459
+    }
+  },
+  "base-sepolia": {
+    "OrbitalHook": {
+      "address": "0xa1685261278e44C12921a0f213daDfBF9Beb6A88",
+      "startBlock": 48033167
+    }
+  },
+  "sepolia": {
+    "OrbitalHook": {
+      "address": "0xd92022CB51f49D61261321836A7a7b2e1A332a88",
+      "startBlock": 11901133
+    }
+  }
+}

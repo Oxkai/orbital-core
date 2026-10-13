@@ -1,0 +1,44 @@
+specVersion: 1.0.0
+description: "Orbital Hook: a Uniswap v4 hook that replaces constant-product
+  with the Orbital sphere/torus curve so N stablecoins trade out of one shared
+  reserve book. Indexed on Arbitrum Sepolia and Unichain Sepolia."
+repository: https://github.com/Oxkai/Orbital.Hook
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: OrbitalHook
+    network: arbitrum-sepolia
+    source:
+      abi: OrbitalHook
+      address: "0x6B92D109D09F5A78A9Af582136B5553409cc6a88"
+      startBlock: 315414399
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - Pool
+        - Asset
+        - Tick
+        - Swap
+        - LiquidityEvent
+        - TickCross
+        - PoolSnapshot
+      abis:
+        - name: OrbitalHook
+          file: ./abis/OrbitalHook.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: Swap(indexed address,uint8,uint8,uint256,uint256)
+          handler: handleSwap
+        - event: Mint(indexed address,indexed uint256,uint256,uint256,uint256[])
+          handler: handleMint
+        - event: Burn(indexed address,indexed uint256,uint256,uint256[])
+          handler: handleBurn
+        - event: Collect(indexed address,indexed uint256,uint256[])
+          handler: handleCollect
+        - event: TickCrossed(indexed uint256,bool)
+          handler: handleTickCrossed
