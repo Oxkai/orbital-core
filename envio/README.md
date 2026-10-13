@@ -77,22 +77,48 @@ up. HyperSync needs an `ENVIO_API_TOKEN`, which Envio Cloud supplies to its own
 deployments; running locally, put a token from envio.dev/app/api-tokens in
 `.env`, or pin `for: sync` to stay on RPC alone.
 
+## Hosted endpoint
+
+```
+https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql
+```
+
+Public, no key. Running on Envio Cloud against HyperSync, synced to the head of
+Monad testnet.
+
+```sh
+curl -s -X POST https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ Pool { swapCount volumeWad feesWad sumX rInt frozen } }"}'
+```
+
 ## Verified against the chain
 
-Backfill from the deploy block (70679352) over the live deployment, checked
-against values read directly from the hook:
+The pool is live, so these figures move. What does not move is that they agree:
+every value the indexer reports is derived independently of the one the hook
+holds, and the two match to the wei. Checked at 27 swaps:
 
 | | On-chain | Indexed |
 |---|---|---|
-| `sumX` | 18472534689490699596921012624 | 18472534689490699596921012624 |
+| `sumX` | 18472534689490746698693839714 | 18472534689490746698693839714 |
 | `rInt` | 9236267344745131856792855798 | 9236267344745131856792855798 |
-| fees, summed over 4 assets | 1.046735 | 1.046735 |
+| fees, summed over 4 assets | 1.056735 | 1.056735 |
 
 The fee figure is the useful check: the indexer derives it from
-`volume * feeBps / 1e6` while the hook accrues it per asset independently, and
-the two agree to the wei.
+`volume * feeBps / 1e6` while the hook accrues it per asset independently.
 
-Rows after backfill: 1 Pool, 4 Asset, 8 Tick, 26 Swap, 27 PoolSnapshot,
+To re-run the comparison at whatever the current state is:
+
+```sh
+cast call 0x2Db3289884D575A7b49374F28d738DBF2dc42a88 \
+  'slot0()(uint256,uint256,uint256,uint256,uint256)' \
+  --rpc-url https://testnet-rpc.monad.xyz
+```
+
+The first value is `sumX` and the third is `rInt`; compare against the query
+above.
+
+Entities after the initial backfill: 1 Pool, 4 Asset, 8 Tick, 27 Swap,
 1 LiquidityEvent, 0 TickCross — no band has crossed, which is what a basket of
 healthy pegs should look like.
 
@@ -103,10 +129,10 @@ The query layer is Hasura, which Envio provisions through Docker
 writes to Postgres, but serves only health and metrics on `:9898`; query
 Postgres directly, or host the indexer on Envio Cloud for a hosted endpoint.
 
-Deploying to Envio Cloud is git-based, through envio.dev/app rather than the
-CLI, which has no auth or deploy commands. Connect the repository, add an
-indexer with root directory `envio` and config file `config.yaml`, and push to
-the deployment branch.
+The deployment above is hosted on Envio Cloud, which is git-based through
+envio.dev/app rather than the CLI (which has no auth or deploy commands).
+Connect the repository, add an indexer with root directory `envio` and config
+file `config.yaml`, and push to the deployment branch.
 
 Note for anything consuming this: Envio's GraphQL is Hasura-flavoured
 (`Pool(where: ...)`), not Graph-flavoured (`pools(where: ...)`), so the
