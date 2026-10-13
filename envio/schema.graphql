@@ -1,0 +1,248 @@
+# Orbital schema, ported from the Graph subgraph.
+#
+# Two differences forced by Envio: there is no `Bytes` scalar, so addresses and
+# hashes are lowercased hex `String!`, and every entity keys on `id: ID!`.
+# Everything else is deliberately the same shape, so the frontend's existing
+# queries port across with only the field-name change.
+
+"One Orbital deployment. Not one pair: the hook is a single N-asset book shared by all N(N-1)/2 v4 pools that point at it."
+type Pool {
+  "Hook address, lowercased."
+  id: ID!
+  chainId: Int!
+  network: String!
+
+  "Immutable engine config."
+  assetCount: Int!
+  feeBps: BigInt!
+
+  "Live engine state, refreshed on every event."
+  sumX: BigInt!
+  """
+  Normalised projection the engine actually compares ticks against:
+    alphaNorm = ((sumX*WAD/sqrtN) - kBound) * WAD / rInt
+  A tick crosses when alphaNorm RISES to meet its kNorm. Raw `sumX` is not
+  comparable to a tick's `k`; these normalised values are.
+  """
+  alphaNorm: BigInt!
+  "alphaNorm when every asset sits at parity, which equals sqrt(N)-1 in WAD."
+  alphaParity: BigInt!
+  sumXSq: BigInt!
+  rInt: BigInt!
+  kBound: BigInt!
+  sBound: BigInt!
+
+  "Bands holding liquidity (each band on the hook's menu is one tick), and how many are interior."
+  tickCount: Int!
+  interiorTickCount: Int!
+
+  """
+  True when every band holding liquidity sits on its boundary (rInt = 0 with
+  kBound != 0). No swap can run, and no deposit, until liquidity returns; LPs
+  can still withdraw. A single pinned band does NOT freeze the pool: trading,
+  deposits into bands the price has not passed, and withdrawals all continue.
+  This is the single most important health flag in the system.
+  """
+  frozen: Boolean!
+
+  """
+  Per-asset virtual reserve: the part of every asset's engine reserve that
+  concentrated ticks quote on but never deposited. TVL is the sum of the
+  assets' `realReserveWad`, not their `reserveWad`.
+  """
+  virtualReserveWad: BigInt!
+
+  "Cumulative counters."
+  swapCount: BigInt!
+  crossCount: BigInt!
+  volumeWad: BigInt!
+  feesWad: BigInt!
+
+  lastUpdatedBlock: BigInt!
+  lastUpdatedAt: BigInt!
+
+  assets: [Asset!]! @derivedFrom(field: "pool")
+  ticks: [Tick!]! @derivedFrom(field: "pool")
+  swaps: [Swap!]! @derivedFrom(field: "pool")
+  snapshots: [PoolSnapshot!]! @derivedFrom(field: "pool")
+}
+
+"""
+One asset in a pool's basket, at the index the hook assigned it.
+
+The hook sorts assets ascending by address, and addresses are unrelated across
+chains, so an asset's index on Monad has nothing to do with its index on
+Arbitrum. Events carry the INDEX, never the symbol, so anything decoding a Swap
+must resolve through here for the chain it came from or it will name the wrong
+token.
+"""
+type Asset {
+  "poolId-index"
+  id: ID!
+  pool: Pool!
+  index: Int!
+  token: String!
+  symbol: String!
+  decimals: Int!
+  "10^(18-decimals), the hook's own WAD conversion factor."
+  scale: BigInt!
+  "The engine's reserve, including the virtual floor concentrated liquidity never deposits."
+  reserveWad: BigInt!
+  "Tokens the pool actually holds: `reserveWad` less the pool's `virtualReserveWad`."
+  realReserveWad: BigInt!
+  feesAccruedWad: BigInt!
+}
+
+"""
+An LP position band. `k` is the plane constant; a tick is INTERIOR while the
+price sits inside it and BOUNDARY once crossed, at which point it stops quoting.
+"""
+type Tick {
+  "poolId-tickIdx"
+  id: ID!
+  pool: Pool!
+  tickIdx: BigInt!
+
+  k: BigInt!
+  r: BigInt!
+  isInterior: Boolean!
+
+  "This tick's normalised plane constant, k*WAD/r. The engine compares THIS to alphaNorm."
+  kNorm: BigInt
+
+  """
+  Signed slack in normalised units: kNorm - alphaNorm.
+  Positive means still interior with room to spare; it crosses at zero.
+  Null when it could not be computed at the last update.
+  """
+  distanceToBoundaryWad: BigInt
+
+  """
+  How far the book has travelled from parity toward THIS tick's bound, in bps.
+  0 = at parity, 10000 = crossing now.
+
+  Tick-relative on purpose. A raw distance cannot be compared between a 0.97
+  tick and a 0.80 tick, because they have different journeys to make; progress
+  normalises by each tick's own span, so the numbers are comparable and no
+  arbitrary risk threshold has to be invented.
+  """
+  boundaryProgressBps: Int!
+
+  "Share of the pool's interior radius this tick supplies, basis points."
+  shareOfRIntBps: Int!
+
+  crossCount: BigInt!
+  lastCrossedAt: BigInt
+  createdAt: BigInt!
+  createdBlock: BigInt!
+  creator: String!
+}
+
+type Swap {
+  "txHash-logIndex"
+  id: ID!
+  pool: Pool!
+  sender: String!
+
+  assetInIndex: Int!
+  assetOutIndex: Int!
+  assetIn: Asset!
+  assetOut: Asset!
+
+  "Raw token units, as the trader paid and received."
+  amountIn: BigInt!
+  amountOut: BigInt!
+  "Normalised to WAD, so the two legs are comparable despite mixed decimals."
+  amountInWad: BigInt!
+  amountOutWad: BigInt!
+
+  """
+  Realised slippage in basis points against a 1:1 reference.
+  These are same-peg assets, so parity IS the fair price and any shortfall is
+  fee plus curve slippage. This is the number the whole design exists to shrink.
+  """
+  slippageBps: Int!
+
+  "Pool state immediately after this swap."
+  rIntAfter: BigInt!
+  frozenAfter: Boolean!
+
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: String!
+}
+
+enum LiquidityAction {
+  MINT
+  BURN
+  COLLECT
+}
+
+type LiquidityEvent {
+  "txHash-logIndex"
+  id: ID!
+  pool: Pool!
+  tick: Tick!
+  action: LiquidityAction!
+  account: String!
+
+  "Radius added or removed, WAD. Zero for COLLECT."
+  rWad: BigInt!
+  "Plane constant, WAD. Only set for MINT."
+  kWad: BigInt
+  "Per-asset raw amounts, index-aligned with the pool's asset array."
+  amounts: [BigInt!]!
+
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: String!
+}
+
+"""
+A tick flipping interior <-> boundary.
+
+`nowInterior: false` is the event the depeg design exists for: that tick has hit
+its LP's chosen bound and stopped quoting, so a broken asset cannot drain the
+LPs who supplied the healthy ones.
+"""
+type TickCross {
+  "txHash-logIndex"
+  id: ID!
+  pool: Pool!
+  tick: Tick!
+  nowInterior: Boolean!
+  "Interior radius left in the book immediately after the flip."
+  rIntAfter: BigInt!
+  "True if this crossing froze the pool (it pinned the last interior band)."
+  causedFreeze: Boolean!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: String!
+}
+
+"""
+Engine state captured at every event.
+
+The agent needs a trend, not a single reading: "the nearest tick has been
+closing on its boundary for the last N swaps" is a risk signal, whereas one
+distance figure in isolation is not.
+"""
+type PoolSnapshot {
+  "poolId-blockNumber-logIndex"
+  id: ID!
+  pool: Pool!
+  sumX: BigInt!
+  rInt: BigInt!
+  kBound: BigInt!
+  frozen: Boolean!
+  interiorTickCount: Int!
+  alphaNorm: BigInt!
+  "Smallest distanceToBoundary across all interior ticks, WAD. Null if none."
+  minDistanceToBoundaryWad: BigInt
+  "Highest boundaryProgressBps across interior ticks: the closest any tick is to crossing."
+  maxBoundaryProgressBps: Int!
+  "Tick id holding that minimum."
+  nearestTick: String
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}

@@ -1,0 +1,51 @@
+# Orbital on Monad — Envio HyperIndex
+#
+# Replaces the Graph subgraph for Monad. The subgraph answered the same
+# questions, but each deployment pinned one hook address, so a redeploy left it
+# indexing a retired contract and the app silently fell back to scanning
+# `eth_getLogs` backwards in 10,000-block windows.
+#
+# The one question this has to answer well is unchanged:
+#   "how close is this book to a tick crossing, and what does that cost?"
+#
+# `TickCrossed` fires AFTER a boundary is hit, so it is useless as a warning.
+# Every handler therefore also reads live engine state at its own block and
+# stores the distance-to-boundary beside the log.
+name: orbital
+description: Orbital Hook - N-asset stablecoin AMM on the Orbital sphere, indexed on Monad testnet.
+
+# `txHash` is on every log entity, so the transaction hash has to be opted into.
+field_selection:
+  transaction_fields:
+    - hash
+
+contracts:
+  - name: OrbitalHook
+    abi_file_path: ./abis/OrbitalHook.json
+    handler: src/EventHandlers.ts
+    events:
+      - event: Swap(address indexed sender, uint8 assetIn, uint8 assetOut, uint256 amountIn, uint256 amountOut)
+      - event: Mint(address indexed recipient, uint256 indexed tickIdx, uint256 kWad, uint256 rWad, uint256[] amounts)
+      - event: Burn(address indexed owner, uint256 indexed tickIdx, uint256 rWad, uint256[] amounts)
+      - event: Collect(address indexed owner, uint256 indexed tickIdx, uint256[] fees)
+      - event: TickCrossed(uint256 indexed tickIdx, bool nowInterior)
+
+chains:
+  - id: 10143
+    start_block: 70679352
+    # RPC as the primary data source. HyperSync is faster and would be the
+    # default for a supported chain, but it needs an ENVIO_API_TOKEN; `for:
+    # sync` keeps the indexer self-contained, and dropping this block is all
+    # it takes to switch over once a token is set.
+    rpc:
+      url: https://testnet-rpc.monad.xyz
+      for: sync
+      # Monad's public RPC answers `eth_getLogs is limited to a 100 range`.
+      # Pinning both ends of the window stops the indexer probing wider ranges
+      # and backing off through four failed retries on every partition.
+      initial_block_interval: 100
+      interval_ceiling: 100
+    contracts:
+      - name: OrbitalHook
+        address:
+          - 0x2Db3289884D575A7b49374F28d738DBF2dc42a88
