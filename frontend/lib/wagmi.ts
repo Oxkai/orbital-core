@@ -38,17 +38,29 @@ export const robinhoodTestnet = defineChain({
 // Sepolia and Ethereum Sepolia carry the same hook. All are same-chain only.
 export { arbitrumSepolia, sepolia, baseSepolia };
 
+/// The chain set and its RPCs, shared by both config factories below so the
+/// Privy path can never drift from the plain one.
+export const SUPPORTED_CHAINS = [
+  robinhoodTestnet,
+  arbitrumSepolia,
+  baseSepolia,
+  sepolia,
+  monadTestnet,
+] as const;
+
+export const SUPPORTED_TRANSPORTS = {
+  [arbitrumSepolia.id]: http("https://sepolia-rollup.arbitrum.io/rpc"),
+  [robinhoodTestnet.id]: http("https://rpc.testnet.chain.robinhood.com"),
+  [baseSepolia.id]: http("https://base-sepolia-rpc.publicnode.com"),
+  [sepolia.id]: http("https://sepolia.drpc.org"),
+  [monadTestnet.id]: http("https://testnet-rpc.monad.xyz"),
+} as const;
+
 export function createWagmiConfig(): Config {
   return createConfig({
-    chains: [robinhoodTestnet, arbitrumSepolia, baseSepolia, sepolia, monadTestnet],
+    chains: SUPPORTED_CHAINS,
     connectors: [injected(), coinbaseWallet({ appName: "Orbital" })],
-    transports: {
-      [arbitrumSepolia.id]: http("https://sepolia-rollup.arbitrum.io/rpc"),
-      [robinhoodTestnet.id]: http("https://rpc.testnet.chain.robinhood.com"),
-      [baseSepolia.id]: http("https://base-sepolia-rpc.publicnode.com"),
-      [sepolia.id]: http("https://sepolia.drpc.org"),
-      [monadTestnet.id]: http("https://testnet-rpc.monad.xyz"),
-    },
+    transports: SUPPORTED_TRANSPORTS,
   });
 }
 
