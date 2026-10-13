@@ -1,10 +1,23 @@
-# Orbital Frontend
+# Orbital · Frontend
 
-The web app for **Orbital**, an N-asset stableswap built as a **Uniswap v4 hook**, deployed on **Monad testnet (chainId 10143)**. Swap, provide liquidity, and inspect the live pool, wired directly to the on-chain hook.
+The web app for **Orbital**, an N-asset stableswap built as a **Uniswap v4 hook**. Swap, provide liquidity and inspect the live pools on **Arbitrum Sepolia** (primary), **Unichain Sepolia** and **Robinhood Chain testnet**.
 
-**Live → https://orbital-hook.vercel.app/**  ·  Hook [`0x63deB95a…6A88`](https://testnet.monadscan.com/address/0x63deB95aFa4EED08271831750059CD4e42e76A88)
+**Live → https://orbital-hook.vercel.app/**
 
-Contracts live in [`../orbitalHook`](../orbitalHook). The deployed addresses the app talks to are in [`lib/contracts.ts`](lib/contracts.ts).
+Contracts live in [`../orbitalHook`](../orbitalHook). The pools the app talks to are registered in [`lib/crosschain.ts`](lib/crosschain.ts), generated from `orbitalHook/deployments.json`.
+
+## What's in the app
+
+| Page | What it does |
+|---|---|
+| **Swap** | Quotes every pool that holds both tokens and routes to the best one; a token on another chain turns the widget into an ERC-7683 cross-chain order between Arbitrum and Unichain (Robinhood Chain testnet has no Hyperlane, so it is same-chain only). |
+| **Pools** | One row per pool: assets, network, address, 24h volume and TVL. |
+| **Pool detail** | Reserves, liquidity depth by price, key metrics and transaction history. |
+| **Add liquidity** | Pick a depeg band and an amount; the hook's own `depositAmounts` quote sizes the position exactly. |
+| **Positions** | Every position across all pools at its real value: increase, decrease, collect fees, withdraw. |
+| **Transactions** | Swaps, deposits, withdrawals and fee claims across all pools, with type filters. |
+
+TVL and position values are the tokens a pool actually holds, excluding the virtual floor concentrated bands quote on.
 
 ## Stack
 
@@ -12,64 +25,64 @@ Contracts live in [`../orbitalHook`](../orbitalHook). The deployed addresses the
 |---|---|
 | Framework | Next.js 16 (App Router) |
 | UI | React 19 |
-| Chain | wagmi 3 + viem 2 (Monad testnet) |
-| Styling | Tailwind CSS 4 + inline design tokens |
-| Math | KaTeX |
-| Charts / 3D | Recharts · three.js |
-| Fonts | Roboto · Geist Mono |
+| Chain | wagmi 3 + viem 2, TanStack Query 5 |
+| Styling | Tailwind CSS 4 + design tokens in `constants/` |
+| Charts / math | Recharts 3 · KaTeX |
 
 ## Run locally
 
 ```bash
+cp .env.example .env.local   # optional, see below
 npm install
 npm run dev      # http://localhost:3000
 npm run build
 npm run lint
 ```
 
-Connect a wallet on **Monad testnet (10143)**. Get test MON from <https://faucet.monad.xyz>. The Nav prompts a network switch if you're on the wrong chain.
+Connect a wallet on any of the three chains; the app prompts a network switch when an action needs a different one.
 
 ## Environment
 
-| Var | Required | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_RPC_URL` | optional | Private Monad RPC. Falls back to the public `https://testnet-rpc.monad.xyz`. |
+All optional. Without them the app uses public endpoints.
 
-Copy `.env.example` → `.env.local` and fill in if you have one.
+| Var | Purpose |
+|---|---|
+| `NEXT_PUBLIC_RPC_URL` | Unichain Sepolia RPC. Defaults to `https://sepolia.unichain.org`. |
+| `NEXT_PUBLIC_SUBGRAPH_ARBITRUM` · `_UNICHAIN` | Override the Subgraph Studio endpoints in [`lib/subgraph.ts`](lib/subgraph.ts). |
+
+## Where the data comes from
+
+- **Pool state and quotes** are read on-chain through each chain's transport in [`lib/wagmi.ts`](lib/wagmi.ts).
+- **Activity and 24h volume** come from the subgraph, one query per chain. The app checks that each subgraph matches the chain's live hook and is current, and otherwise reads the hook's logs directly from the chain, so what it shows is always up to date.
 
 ## Deploy on Vercel
 
-Deploy this folder as its own Vercel project:
-
-1. **Import** the `Oxkai/orbital-core` repo into Vercel.
-2. Set **Root Directory** to `frontend`.
-3. Framework preset auto-detects **Next.js** (also pinned in `vercel.json`).
-4. (Optional) add `NEXT_PUBLIC_RPC_URL` as an env var.
-5. Deploy.
-
-`vercel.json` pins `framework: nextjs`, `buildCommand: next build`, `installCommand: npm install`.
+1. Import the repo into Vercel and set **Root Directory** to `frontend`.
+2. The Next.js preset is detected (and pinned in `vercel.json`).
+3. Add any of the environment variables above.
+4. Deploy.
 
 ## Structure
 
 ```
 app/
-  layout.tsx              root layout: fonts, theme vars, KaTeX css
-  page.tsx                home page: assembles all sections
-  app/                    the dApp
-    swap/                 swap widget (V4Quoter + v4 router)
-    pools/  pool/[address]  pool list + detail + add-liquidity
-    positions/            LP positions (ERC-6909 shares)
-    transactions/         on-chain activity
+  page.tsx                  landing page
+  app/                      the dApp
+    swap/                   swap widget and venue routing
+    pools/  pool/[address]/ pool list, pool detail, add liquidity
+    positions/              LP positions
+    transactions/           activity across every pool
 components/
-  home/                   Masthead · Pillars · Mechanics · Architecture · PoolSim (3-token sphere simulation) · VsTable · Deployed · References
-  app/                    swap widget, pool/position cards, LP modals
-  layout/                 Nav (dark/light) · Footer
-  Tex.tsx                 KaTeX formula renderer
+  home/                     landing sections
+  app/                      swap, pools, pool, lp, positions, transactions, shared
 lib/
-  contracts.ts            deployed addresses + ABIs + PoolKey helper
-  wagmi.ts                Monad testnet chain config
-  hooks/                  usePool · usePositions · useTokenBalances · useTransactions · useVolume24h
-constants/                color themes (dark/light) + type scale
+  crosschain.ts             pool and token registry, per chain and per pool
+  poolErrors.ts             human explanations for a pool's revert reasons
+  contracts.ts              hook ABIs and token metadata
+  subgraph.ts               Studio endpoints, freshness guard, activity and volume
+  wagmi.ts                  chains and transports
+  hooks/                    usePool · usePositions · useDepositQuote · usePoolVolume24h ·
+                            useTransactions · useTokenBalances · useCrossChainOrder
+  orbital/                  client-side Orbital math helpers
+constants/                  color themes and type scale
 ```
-
-> Research deployment on Monad testnet, not audited, not production.
