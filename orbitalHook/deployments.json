@@ -135,5 +135,39 @@
       }
     },
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+  },
+  "10143": {
+    "name": "Monad Testnet",
+    "short": "Monad",
+    "rpc": "https://testnet-rpc.monad.xyz",
+    "explorer": "https://testnet.monadscan.com",
+    "poolManager": "0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7",
+    "v4Router": "0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a",
+    "quoter": "0x2f7A2DC7d74645A31CABb5466219CCAB70913377",
+    "orbitalHook": "0x2Db3289884D575A7b49374F28d738DBF2dc42a88",
+    "deployBlock": 70679352,
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "assets": {
+      "USDC": {
+        "address": "0x0a29619e8580d90b14200a734faad4677e9d1645",
+        "index": 0,
+        "decimals": 6
+      },
+      "USDT": {
+        "address": "0x45dc287a307eccf7426cb2377ee2865457592fae",
+        "index": 1,
+        "decimals": 6
+      },
+      "FRAX": {
+        "address": "0x871290c7a788395f1ce5f7cdd69917696e0c352a",
+        "index": 2,
+        "decimals": 18
+      },
+      "DAI": {
+        "address": "0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4",
+        "index": 3,
+        "decimals": 18
+      }
+    }
   }
 }
