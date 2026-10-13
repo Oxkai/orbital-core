@@ -71,9 +71,11 @@ Monad's public RPC answers `eth_getLogs is limited to a 100 range`, so
 Without that the indexer probes wider ranges and backs off through four failed
 retries on every partition.
 
-HyperSync would be considerably faster and is the default for a supported
-chain, but it needs an `ENVIO_API_TOKEN`. The `rpc` block keeps the indexer
-self-contained; deleting it switches to HyperSync once a token is set.
+The `rpc` block deliberately omits `for:`. Left out, it defaults to `fallback`
+wherever HyperSync covers the chain, so HyperSync leads and this RPC backs it
+up. HyperSync needs an `ENVIO_API_TOKEN`, which Envio Cloud supplies to its own
+deployments; running locally, put a token from envio.dev/app/api-tokens in
+`.env`, or pin `for: sync` to stay on RPC alone.
 
 ## Verified against the chain
 
@@ -100,6 +102,11 @@ The query layer is Hasura, which Envio provisions through Docker
 (`ENVIO_HASURA=true`). On a machine without Docker the indexer still runs and
 writes to Postgres, but serves only health and metrics on `:9898`; query
 Postgres directly, or host the indexer on Envio Cloud for a hosted endpoint.
+
+Deploying to Envio Cloud is git-based, through envio.dev/app rather than the
+CLI, which has no auth or deploy commands. Connect the repository, add an
+indexer with root directory `envio` and config file `config.yaml`, and push to
+the deployment branch.
 
 Note for anything consuming this: Envio's GraphQL is Hasura-flavoured
 (`Pool(where: ...)`), not Graph-flavoured (`pools(where: ...)`), so the

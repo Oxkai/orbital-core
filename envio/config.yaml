@@ -33,13 +33,15 @@ contracts:
 chains:
   - id: 10143
     start_block: 70679352
-    # RPC as the primary data source. HyperSync is faster and would be the
-    # default for a supported chain, but it needs an ENVIO_API_TOKEN; `for:
-    # sync` keeps the indexer self-contained, and dropping this block is all
-    # it takes to switch over once a token is set.
+    # No `for:` here on purpose. Omitted, it defaults to `fallback` when
+    # HyperSync covers the chain and `sync` when it does not, so HyperSync
+    # leads wherever it is available and this RPC backs it up.
+    #
+    # HyperSync needs an ENVIO_API_TOKEN, which Envio Cloud supplies to its own
+    # deployments. Running locally, put a token from envio.dev/app/api-tokens
+    # in .env, or pin `for: sync` to stay on RPC alone.
     rpc:
       url: https://testnet-rpc.monad.xyz
-      for: sync
       # Monad's public RPC answers `eth_getLogs is limited to a 100 range`.
       # Pinning both ends of the window stops the indexer probing wider ranges
       # and backing off through four failed retries on every partition.
