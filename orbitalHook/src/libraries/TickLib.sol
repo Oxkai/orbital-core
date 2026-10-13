@@ -8,14 +8,21 @@ import "./SphereMath.sol";
 /// @notice Tick geometry for the orbital AMM (paper §4.5–4.9).
 ///         All monetary values WAD (1e18) fixed-point unless noted.
 library TickLib {
+    error PriceOutOfRange();
+    error KAboveValidRange();
+    error NegativeDiscriminant();
+    error XMinAboveBase();
+
     // Tick struct
 
+    /// @dev Fee accounting is not held here: a tick's fee growth is per ASSET,
+    ///      which one field cannot express, and lives in the hook's
+    ///      `tickFeeGrowthInside` / `tickFeeGrowthSnapshot` mappings.
+    ///      Nor is whether the tick is interior: the hook keeps that in one
+    ///      bitmap for all bands, which crossing detection reads in one go.
     struct Tick {
-        uint256 k;                // plane constant, WAD-scaled
-        uint256 r;                // radius contribution, WAD-scaled
-        bool    isInterior;       // true when current price is inside this tick
-        uint256 feeGrowthInside;  // accumulated fee growth inside the tick
-        uint128 liquidityGross;   // total liquidity (r) in integer units
+        uint256 k; // plane constant, WAD-scaled
+        uint256 r; // radius, WAD-scaled — the tick's liquidity
     }
 
     // Internal helper
@@ -28,13 +35,13 @@ library TickLib {
     // Tick range bounds
 
     /// @notice Minimum valid plane constant: kMin = r(sqrt(n) - 1), WAD-scaled.
-    function kMin(uint256 r, uint256 n) internal pure returns (uint256) {
+    function kMin(uint256 r, uint256 n) public pure returns (uint256) {
         uint256 sqrtN = _sqrtN(n);
         return FullMath.mulDiv(r, sqrtN - SphereMath.WAD, SphereMath.WAD);
     }
 
     /// @notice Maximum valid plane constant: kMax = r(n-1)/sqrt(n), WAD-scaled.
-    function kMax(uint256 r, uint256 n) internal pure returns (uint256) {
+    function kMax(uint256 r, uint256 n) public pure returns (uint256) {
         uint256 sqrtN = _sqrtN(n);
         return FullMath.mulDiv(r, (n - 1) * SphereMath.WAD, sqrtN);
     }
@@ -50,14 +57,22 @@ library TickLib {
         uint256 r,
         uint256 n,
         uint256 pWad
-    ) internal pure returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 WAD   = SphereMath.WAD;
         uint256 sqrtN = _sqrtN(n);
 
-        // Boundary special cases: formula converges to kMin/kMax at p=1/p=0,
-        // but two independent sqrt floors produce ~100-200 wei residual error.
-        // Snap to exact bounds — these are semantically correct degenerate limits.
+        // p = 1 is the formula's own limit: k_depeg(1) = r√n − r·n/n = kMin. It is
+        // snapped exactly because the two independent sqrt floors below leave
+        // ~100-200 wei of residual there.
         if (pWad >= WAD) return kMin(r, n);
+
+        // p = 0 is NOT the formula's limit. k_depeg(0) = r√n − r√(n−1)/√n, which
+        // is below kMax (1.134r against 1.5r at n = 4): the depeg reading only
+        // spans [kMin, k_depeg(0)]. The paper places kMax outside it — a tick
+        // that stays in range while every coin but one goes to zero (§4.8). So
+        // p = 0 is a sentinel meaning "full range" and returns kMax; k jumps
+        // there rather than approaching it. Callers wanting the widest DEPEG
+        // band should pass a small positive price instead.
         if (pWad == 0)   return kMax(r, n);
 
         // p^2 in WAD
@@ -75,7 +90,7 @@ library TickLib {
         // (follows from n²*(p²+n-1) >= (p+n-1)² by Cauchy-Schwarz for p∈[0,1], n>=2).
         uint256 lhs = sqrtN * sqrtDenom;           // ≈ n*sqrt(p²+n-1)*WAD²  ≤ ~1e37
         uint256 rhs = numerator * WAD;             // ≈ (p+n-1)*WAD²          ≤ ~1e37
-        require(lhs >= rhs, "TickLib: price out of range");
+        if (lhs < rhs) revert PriceOutOfRange();
 
         uint256 k = FullMath.mulDiv(r, lhs - rhs, WAD * sqrtDenom);
 
@@ -91,14 +106,14 @@ library TickLib {
 
     /// @notice Minimum reserve for asset i at tick k.
     ///         xMin = (k*sqrt(n) - sqrt(k^2*n - n*((n-1)*r - k*sqrt(n))^2)) / n
-    function xMin(uint256 r, uint256 n, uint256 k) internal pure returns (uint256) {
+    function xMin(uint256 r, uint256 n, uint256 k) public pure returns (uint256) {
         (uint256 lo, ) = _reserveBounds(r, n, k);
         return lo;
     }
 
     /// @notice Maximum reserve for asset i at tick k, capped at r.
     ///         xMax = (k*sqrt(n) + sqrt(k^2*n - n*((n-1)*r - k*sqrt(n))^2)) / n
-    function xMax(uint256 r, uint256 n, uint256 k) internal pure returns (uint256) {
+    function xMax(uint256 r, uint256 n, uint256 k) public pure returns (uint256) {
         (, uint256 hi) = _reserveBounds(r, n, k);
         return hi;
     }
@@ -117,25 +132,34 @@ library TickLib {
         uint256 A;
         {
             uint256 nMinus1R = (n - 1) * r;
-            require(nMinus1R >= kSqrtN, "TickLib: k above valid range");
+            if (nMinus1R < kSqrtN) revert KAboveValidRange();
             A = nMinus1R - kSqrtN;
         }
 
-        // sqrtDisc = sqrt(k^2*n - n*A^2), WAD-scaled.
-        //
-        // The discriminant is analytically >= 0 across the whole valid range and
-        // exactly 0 at k == kMin (there A == k, so k²n - nA² == 0). Two
-        // independent floored sqrts can drive it a few wei negative right at
-        // that boundary, so saturate instead of reverting — at k == kMin the
-        // true value is 0 and `lo` correctly collapses to the equal-price point.
+        // sqrtDisc = sqrt(k^2*n - n*A^2), WAD-scaled
         uint256 sqrtDisc;
         {
             uint256 kSqN = n * FullMath.mulDiv(k, k, WAD);
             uint256 nASq = n * FullMath.mulDiv(A, A, WAD);
-            sqrtDisc = kSqN > nASq ? SphereMath.sqrt((kSqN - nASq) * WAD) : 0;
+            // At k = kMin (a zero-width band) the discriminant is exactly 0, and
+            // the floored products can leave it a few wei negative. Treat a
+            // deficit within 1e-12 of k²n as that zero; anything larger means
+            // k is genuinely out of range.
+            if (kSqN < nASq) {
+                if (nASq - kSqN > kSqN / 1e12) revert NegativeDiscriminant();
+                nASq = kSqN;
+            }
+            sqrtDisc = SphereMath.sqrt((kSqN - nASq) * WAD);
         }
 
-        lo = (kSqrtN - sqrtDisc) / n;
+        // xMin = (k√n − √D)/n cancels catastrophically near kMax, where the two
+        // terms agree to the last wei (at kMax, A = 0 and xMin is exactly 0,
+        // but the separately floored √D can exceed k√n and underflow). Since
+        // k²n − D = nA², the same quantity is A²/(k√n + √D): a sum, so it
+        // cannot go negative, it is exactly 0 at kMax, and it is q at kMin.
+        // The denominator is rounded up so xMin — and with it the virtual
+        // reserve the pool never pays out — errs low.
+        lo = A == 0 ? 0 : FullMath.mulDiv(A, A, kSqrtN + sqrtDisc + 1);
 
         uint256 hiRaw = (kSqrtN + sqrtDisc) / n;
         hi = hiRaw > r ? r : hiRaw;
@@ -149,38 +173,13 @@ library TickLib {
         uint256 r,
         uint256 n,
         uint256 k
-    ) internal pure returns (uint256) {
+    ) public pure returns (uint256) {
         if (k == kMax(r, n)) return SphereMath.WAD;
 
         uint256 xBase = SphereMath.equalPricePoint(r, n);
         uint256 xLo   = xMin(r, n, k);
 
-        require(xBase > xLo, "TickLib: xMin >= xBase");
+        if (xBase <= xLo) revert XMinAboveBase();
         return FullMath.mulDiv(xBase, SphereMath.WAD, xBase - xLo);
-    }
-
-    // Boundary radius (paper §4.6)
-
-    /// @notice Radius of the boundary circle at plane constant k.
-    ///         s = sqrt(r^2 - (r*sqrt(n) - k)^2), WAD-scaled.
-    /// @dev    k < r*sqrt(n) always holds in the valid range.
-    function boundaryRadius(
-        uint256 r,
-        uint256 k,
-        uint256 n
-    ) internal pure returns (uint256) {
-        uint256 WAD    = SphereMath.WAD;
-        uint256 sqrtN  = _sqrtN(n);
-        uint256 rSqrtN = FullMath.mulDiv(r, sqrtN, WAD);
-
-        require(k >= kMin(r, n) && k <= kMax(r, n), "TickLib: k out of range");
-
-        // k < r*sqrt(n) in valid range so diff >= 0
-        uint256 diff   = rSqrtN - k;
-        uint256 rSq    = FullMath.mulDiv(r, r, WAD);
-        uint256 diffSq = FullMath.mulDiv(diff, diff, WAD);
-        require(rSq >= diffSq, "TickLib: geometry error");
-        uint256 inner  = rSq - diffSq;
-        return SphereMath.sqrt(inner * WAD);
     }
 }
