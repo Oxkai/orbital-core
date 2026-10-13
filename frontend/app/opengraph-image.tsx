@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const alt = "Orbital — N-asset stablecoin AMM on Monad";
+export const alt = "Orbital: N-asset stablecoin AMM on Arbitrum";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -62,8 +62,8 @@ export default function OpengraphImage() {
             paddingTop: 24,
           }}
         >
-          <div>MONAD TESTNET · CHAIN ID 10143</div>
-          <div>121 TESTS PASSING</div>
+          <div>ARBITRUM SEPOLIA · CHAIN ID 421614</div>
+          <div>190 TESTS</div>
         </div>
       </div>
     ),

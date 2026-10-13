@@ -18,17 +18,23 @@ import {
 import { color, typography } from "@/constants";
 
 import { usePool }   from "@/lib/hooks/usePool";
-import { useTransactions, type TxType } from "@/lib/hooks/useTransactions";
+import { useTransactions } from "@/lib/hooks/useTransactions";
 import { DepthChart } from "@/components/app/pool/DepthChart";
 import { fmtUSD }   from "@/lib/mock/data";
 import { type Address } from "viem";
-import { explorerAddressUrl, explorerTxUrl } from "@/lib/wagmi";
+import { chainIdForPool, explorerAddress } from "@/lib/crosschain";
+import { bandLabel } from "@/lib/bands";
 import { TokenIcon } from "@/components/app/shared/TokenIcon";
+import {
+  TransactionListHeader,
+  TransactionListNotice,
+  TransactionRow,
+} from "@/components/app/transactions/TransactionRow";
 
 const TABS = ["Overview", "Liquidity", "Transactions"] as const;
 type Tab = typeof TABS[number];
 
-// Section / kicker label — Roboto caption, uppercase
+// Section / kicker label: Roboto caption, uppercase
 const LBL = {
   fontFamily: typography.caption.family,
   fontSize: typography.caption.size,
@@ -37,7 +43,7 @@ const LBL = {
   fontWeight: 500,
 };
 
-// Row body text — Roboto, tabular numerals for clean alignment
+// Row body text: Roboto, tabular numerals for clean alignment
 function body(size: "p1" | "p2" | "p3" | "caption" = "p2", c: string = color.textPrimary) {
   const t = typography[size];
   return {
@@ -50,7 +56,7 @@ function body(size: "p1" | "p2" | "p3" | "caption" = "p2", c: string = color.tex
   };
 }
 
-// Mono — reserved for hashes and on-chain identifiers only
+// Mono: reserved for hashes and on-chain identifiers only
 function mono(size = "12px", c: string = color.textPrimary) {
   return {
     fontFamily: "var(--font-mono)" as const,
@@ -184,7 +190,8 @@ function OverviewTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["p
   const boundaryCount = pool.ticks.filter(t => !t.isInterior).length;
   const isHealthy     = boundaryCount === 0;
   const activeTicks   = pool.ticks.length - boundaryCount;
-  const explorer      = explorerAddressUrl(pool.address);
+  // Per-chain explorer: the pool's own chain, not the primary one.
+  const explorer      = explorerAddress(pool.chainId, pool.address);
 
   return (
     <div className="flex flex-col gap-8">
@@ -246,12 +253,12 @@ function OverviewTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["p
           </InfoRow>
           <InfoRow icon={<TrendUp size={14} weight="regular" />} label="Volume 24H">
             <span style={body("p2", color.textPrimary)}>
-              {pool.volume24h > 0 ? fmtUSD(pool.volume24h) : "—"}
+              {pool.volume24h !== undefined ? fmtUSD(pool.volume24h) : "…"}
             </span>
           </InfoRow>
           <InfoRow icon={<Coins size={14} weight="regular" />} label="Fees 24H">
             <span style={body("p2", color.textPrimary)}>
-              {pool.fees24h > 0 ? fmtUSD(pool.fees24h) : "—"}
+              {pool.fees24h !== undefined ? fmtUSD(pool.fees24h) : "…"}
             </span>
           </InfoRow>
           <InfoRow icon={<Percent size={14} weight="regular" />} label="Fee Tier">
@@ -365,24 +372,24 @@ function LiquidityTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["
       </SectionLabel>
 
       <div className="flex flex-col gap-px">
-        {/* Column headers — desktop */}
+        {/* Column headers: desktop */}
         <div
           className="hidden sm:grid items-center px-5 py-2.5"
           style={{
             backgroundColor: color.surface1,
-            gridTemplateColumns: "32px 1fr 160px 110px",
+            gridTemplateColumns: "96px 1fr 160px 110px",
           }}
         >
-          {["#", "Liquidity (r)", "k (WAD)", "Status"].map(h => (
+          {["Band", "Liquidity (r)", "k (WAD)", "Status"].map(h => (
             <span key={h} style={{ ...LBL, color: color.textMuted }}>{h}</span>
           ))}
         </div>
 
-        {pool.ticks.map((tick, i) => {
+        {pool.ticks.map((tick) => {
           const tickColor = tick.isInterior ? color.success : color.warning;
           return (
             <div
-              key={i}
+              key={tick.band}
               className="hover:bg-(--color-surface-2) transition-colors"
               style={{ backgroundColor: color.surface1 }}
             >
@@ -390,11 +397,11 @@ function LiquidityTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["
               <div
                 className="hidden sm:grid items-center px-5"
                 style={{
-                  gridTemplateColumns: "32px 1fr 160px 110px",
+                  gridTemplateColumns: "96px 1fr 160px 110px",
                   minHeight: 56,
                 }}
               >
-                <span style={body("caption", color.textMuted)}>{i}</span>
+                <span style={body("caption", color.textMuted)}>{bandLabel(tick.band)}</span>
                 <div className="flex flex-col gap-1.5 py-3 pr-6">
                   <span style={body("p2", color.textPrimary)}>{fmtUSD(tick.r)}</span>
                   <div style={{ height: 2, backgroundColor: color.surface3, overflow: "hidden" }}>
@@ -418,11 +425,11 @@ function LiquidityTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["
               <div
                 className="sm:hidden grid items-center px-5"
                 style={{
-                  gridTemplateColumns: "28px 1fr auto",
+                  gridTemplateColumns: "84px 1fr auto",
                   minHeight: 50,
                 }}
               >
-                <span style={body("caption", color.textMuted)}>{i}</span>
+                <span style={body("caption", color.textMuted)}>{bandLabel(tick.band)}</span>
                 <div className="flex flex-col gap-1 py-3 pr-3">
                   <span style={body("p3", color.textPrimary)}>{fmtUSD(tick.r)}</span>
                   <div style={{ height: 2, backgroundColor: color.surface3, overflow: "hidden" }}>
@@ -447,7 +454,7 @@ function LiquidityTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["
             className="flex items-center justify-center py-16"
             style={{ backgroundColor: color.surface1 }}
           >
-            <span style={body("p3", color.textMuted)}>No ticks found</span>
+            <span style={body("p3", color.textMuted)}>No liquidity yet</span>
           </div>
         )}
       </div>
@@ -457,176 +464,33 @@ function LiquidityTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["
 
 // ─── Transactions tab ─────────────────────────────────────────────────────────
 
-const TYPE_COLOR: Record<TxType, string> = {
-  Swap:    "#60A5FA",
-  Add:     color.success,
-  Remove:  color.warning,
-  Collect: color.textMuted,
-};
-
-function timeAgo(unix: number): string {
-  if (!unix) return "—";
-  const diff = Math.floor(Date.now() / 1000) - unix;
-  if (diff < 60)    return `${diff}s ago`;
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-function TypePill({ type }: { type: TxType }) {
-  const c = TYPE_COLOR[type];
-  return (
-    <span
-      style={{
-        fontFamily: typography.caption.family,
-        fontSize: "10px",
-        fontWeight: 500,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        color: c,
-        backgroundColor: `${c}1a`,
-        padding: "3px 9px",
-        borderRadius: 2,
-        display: "inline-block",
-        whiteSpace: "nowrap",
-        width: "fit-content",
-      }}
-    >
-      {type}
-    </span>
-  );
-}
-
 function TransactionsTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["pool"]> }) {
-  const { txs, isLoading, isLoadingMore, hasMore, loadMore, error } = useTransactions(pool.tokens);
+  const { txs, isLoading, isLoadingMore, hasMoreFor, loadMore, error } = useTransactions();
+  // The feed covers every pool (and is shared with the Transactions page);
+  // this tab is this pool's history only.
+  const mine = txs.filter((t) => t.pool.toLowerCase() === pool.address.toLowerCase());
+  const hasMore = hasMoreFor(pool.address);
 
   return (
     <div>
       <SectionLabel
         meta={
           <span style={body("caption", color.textMuted)}>
-            {isLoading ? "Loading…" : `${txs.length} loaded`}
+            {isLoading ? "Loading…" : `${mine.length} loaded`}
           </span>
         }
       >
         Transaction History
       </SectionLabel>
 
+      <TransactionListHeader scope="pool" />
       <div className="flex flex-col gap-px">
-        {/* Column headers — desktop */}
-        <div
-          className="hidden sm:grid items-center px-5 py-2.5"
-          style={{
-            backgroundColor: color.surface1,
-            gridTemplateColumns: "92px 1.2fr 1fr 1fr 90px 110px",
-          }}
-        >
-          {["Type", "From", "Amount In", "Amount Out", "Time", "Tx Hash"].map(h => (
-            <span key={h} style={{ ...LBL, color: color.textMuted }}>{h}</span>
-          ))}
-        </div>
+        {isLoading && <TransactionListNotice>Scanning on-chain events…</TransactionListNotice>}
+        {error && !isLoading && <TransactionListNotice tone="warning">{error}</TransactionListNotice>}
+        {!isLoading && !error && mine.length === 0 && <TransactionListNotice>No transactions found</TransactionListNotice>}
 
-        {isLoading && (
-          <div
-            className="flex items-center justify-center py-16"
-            style={{ backgroundColor: color.surface1 }}
-          >
-            <span style={body("p3", color.textMuted)}>Scanning on-chain events…</span>
-          </div>
-        )}
-
-        {error && !isLoading && (
-          <div
-            className="flex items-center justify-center py-16"
-            style={{ backgroundColor: color.surface1 }}
-          >
-            <span style={body("p3", color.warning)}>{error}</span>
-          </div>
-        )}
-
-        {!isLoading && !error && txs.length === 0 && (
-          <div
-            className="flex items-center justify-center py-16"
-            style={{ backgroundColor: color.surface1 }}
-          >
-            <span style={body("p3", color.textMuted)}>No transactions found</span>
-          </div>
-        )}
-
-        {txs.map((tx, i) => (
-          <div
-            key={tx.hash + i}
-            className="hover:bg-(--color-surface-2) transition-colors"
-            style={{ backgroundColor: color.surface1 }}
-          >
-            {/* Desktop row */}
-            <div
-              className="hidden sm:grid items-center px-5 py-3"
-              style={{ gridTemplateColumns: "92px 1.2fr 1fr 1fr 90px 110px" }}
-            >
-              <TypePill type={tx.type} />
-              <span style={{ ...body("p3", color.textSecondary), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {tx.actor.slice(0, 8)}…{tx.actor.slice(-4)}
-              </span>
-              <span style={{ ...body("p3", color.textPrimary), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {tx.amountIn}
-              </span>
-              <span style={{ ...body("p3", tx.amountOut ? color.success : color.textMuted), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {tx.amountOut || "—"}
-              </span>
-              <span
-                style={body("caption", color.textMuted)}
-                title={tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleString() : ""}
-                suppressHydrationWarning
-              >
-                {timeAgo(tx.timestamp)}
-              </span>
-              <a
-                href={explorerTxUrl(tx.hash)}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 hover:opacity-100 opacity-70 transition-opacity"
-                style={body("caption", color.textMuted)}
-              >
-                {tx.hash.slice(0, 10)}…
-                <ArrowSquareOut size={11} weight="regular" />
-              </a>
-            </div>
-
-            {/* Mobile card */}
-            <div className="sm:hidden px-5 py-4 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <TypePill type={tx.type} />
-                <div className="flex items-center gap-3">
-                  <span style={body("caption", color.textMuted)} suppressHydrationWarning>
-                    {timeAgo(tx.timestamp)}
-                  </span>
-                  <a
-                    href={explorerTxUrl(tx.hash)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1"
-                    style={body("caption", color.textMuted)}
-                  >
-                    {tx.hash.slice(0, 8)}…
-                    <ArrowSquareOut size={11} weight="regular" />
-                  </a>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span style={body("p2", color.textPrimary)}>{tx.amountIn}</span>
-                {tx.amountOut && (
-                  <>
-                    <span style={body("caption", color.textMuted)}>→</span>
-                    <span style={body("p2", color.success)}>{tx.amountOut}</span>
-                  </>
-                )}
-              </div>
-              <span style={body("caption", color.textMuted)}>
-                From {tx.actor.slice(0, 8)}…{tx.actor.slice(-4)}
-              </span>
-            </div>
-          </div>
+        {mine.map((tx) => (
+          <TransactionRow key={`${tx.chainId}:${tx.eventId}`} tx={tx} scope="pool" />
         ))}
 
         {!isLoading && (hasMore || isLoadingMore) && (
@@ -652,7 +516,7 @@ function TransactionsTab({ pool }: { pool: NonNullable<ReturnType<typeof usePool
           </div>
         )}
 
-        {!isLoading && !hasMore && txs.length > 0 && (
+        {!isLoading && !hasMore && mine.length > 0 && (
           <div
             className="flex items-center justify-center py-4"
             style={{ backgroundColor: color.surface1 }}
@@ -674,7 +538,11 @@ function shortAddr(addr: string) {
 export default function PoolDetailPage({ params }: { params: Promise<{ address: string }> }) {
   const { address: poolAddr } = use(params);
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
-  const { pool, isLoading } = usePool(poolAddr as Address, { withVolume: true });
+  // The route carries only an address, so the chain has to be recovered from
+  // the registry. Without this every non-primary pool would be read off the
+  // Unichain RPC and render as an empty pool.
+  const poolChainId = chainIdForPool(poolAddr);
+  const { pool, isLoading } = usePool(poolAddr as Address, { withVolume: true, chainId: poolChainId });
 
   const pairLabel = pool ? pool.tokens.map(t => t.symbol).join(" / ") : "Pool";
 
@@ -700,7 +568,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               {pool && (
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <a
-                    href={explorerAddressUrl(poolAddr)}
+                    href={explorerAddress(poolChainId, poolAddr)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 hover:opacity-100 opacity-80 transition-opacity"

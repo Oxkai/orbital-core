@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccount, useConnect, useConnectors, useDisconnect, useChainId, useSwitchChain } from "wagmi";
-import { monadTestnet } from "@/lib/wagmi";
+import { CHAIN_IDS, PRIMARY_CHAIN_ID } from "@/lib/crosschain";
 import { color, typography } from "@/constants";
 import { List as Menu, X, MagnifyingGlass } from "@phosphor-icons/react";
 
@@ -19,7 +19,7 @@ function short(addr: string) {
   return addr.slice(0, 6) + "…" + addr.slice(-4);
 }
 
-// Deterministic wallet avatar — a 2-stop gradient seeded by the address.
+// Deterministic wallet avatar: a 2-stop gradient seeded by the address.
 function avatarGradient(addr: string) {
   const a = addr.toLowerCase().replace("0x", "").padEnd(12, "0");
   const h1 = parseInt(a.slice(0, 6), 16) % 360;
@@ -44,14 +44,14 @@ export function AppNav() {
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   const showConnectedWallet = isMounted && isConnected && address;
-  const wrongChain = isMounted && isConnected && chainId !== monadTestnet.id;
+  const wrongChain = isMounted && isConnected && !(CHAIN_IDS as readonly number[]).includes(chainId);
 
   return (
     <>
       <nav
-        className="sticky top-0 z-40 flex items-center h-14 px-4 md:px-12 gap-8 backdrop-blur-md"
+        className="sticky top-0 z-40 flex items-center h-14 px-4 md:px-12 gap-8"
         style={{
-          backgroundColor: "color-mix(in srgb, var(--color-bg) 82%, transparent)",
+          backgroundColor: color.bg,
         }}
       >
         <Link href="/" aria-label="Orbital home" className="flex items-center shrink-0">
@@ -139,7 +139,7 @@ export function AppNav() {
 
           {wrongChain && (
             <button
-              onClick={() => switchChain({ chainId: monadTestnet.id })}
+              onClick={() => switchChain({ chainId: PRIMARY_CHAIN_ID })}
               className="hidden sm:flex items-center h-9 px-3 hover:opacity-90 transition-opacity"
               style={{
                 color: color.error,
@@ -151,7 +151,7 @@ export function AppNav() {
                 cursor: "pointer",
               }}
             >
-              Wrong network — switch
+              Wrong network, switch
             </button>
           )}
           {showConnectedWallet ? (
@@ -217,7 +217,7 @@ export function AppNav() {
         >
           {wrongChain && (
             <button
-              onClick={() => { switchChain({ chainId: monadTestnet.id }); setMenuOpen(false); }}
+              onClick={() => { switchChain({ chainId: PRIMARY_CHAIN_ID }); setMenuOpen(false); }}
               className="w-full text-left py-3"
               style={{
                 color: color.error,
@@ -226,7 +226,7 @@ export function AppNav() {
                 cursor: "pointer",
               }}
             >
-              ⚠ Wrong network — tap to switch
+              ⚠ Wrong network, tap to switch
             </button>
           )}
           {LINKS.map(({ href, label }) => {

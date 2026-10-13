@@ -1,27 +1,26 @@
 "use client";
 
 import { color, typography } from "@/constants";
-import { PoolCard } from "@/components/app/pools/PoolCard";
+import { PoolListHeader, PoolRow, PoolRowPlaceholder } from "@/components/app/pools/PoolRow";
 import { usePool } from "@/lib/hooks/usePool";
-import { POOL_ADDRESSES } from "@/lib/contracts";
-import type { Address } from "viem";
+import { ALL_POOLS, type PoolEntry } from "@/lib/crosschain";
 
-const ZERO = "0x0000000000000000000000000000000000000000" as Address;
-function useAllPools(addresses: readonly Address[]) {
-  const a = usePool(addresses[0] ?? ZERO);
-  const b = usePool(addresses[1] ?? ZERO);
-  const c = usePool(addresses[2] ?? ZERO);
-  const d = usePool(addresses[3] ?? ZERO);
-  return [a, b, c, d].slice(0, addresses.length);
+/// One row per deployed pool, each loading independently.
+///
+/// Within a chain, Orbital is a single N-asset book that many LPs share through
+/// ticks, which is why there is one row per pool and not one per pair. Across
+/// chains it is not: each chain has its own hook holding its own reserves, and
+/// the cross-chain settlers move orders between them without merging the books.
+///
+/// Each row owns its reads, so a slow or unreachable RPC delays only its own
+/// row instead of blanking the list.
+function PoolListItem({ entry }: { entry: PoolEntry }) {
+  const { pool, isError } = usePool(entry.address, { chainId: entry.chainId, withVolume: true });
+  if (pool) return <PoolRow pool={pool} />;
+  return <PoolRowPlaceholder entry={entry} failed={isError} />;
 }
 
 export default function PoolsPage() {
-  const poolHooks = useAllPools(POOL_ADDRESSES);
-
-  const isLoading = poolHooks.some(p => p.isLoading);
-  const isError   = poolHooks.every(p => p.isError);
-  const pools     = poolHooks.map(p => p.pool).filter(Boolean) as NonNullable<ReturnType<typeof usePool>["pool"]>[];
-
   return (
     <section className="flex-1 flex flex-col py-8 sm:py-10">
       {/* ── Hero ─────────────────────────────────────────────────── */}
@@ -46,44 +45,20 @@ export default function PoolsPage() {
             lineHeight: typography.p2.lineHeight,
           }}
         >
-          Multi-asset stable liquidity pools with capital-efficient ticks.
+          Multi-asset liquidity pools with capital-efficient ticks, keeping stablecoins at parity.
         </p>
       </header>
 
-        {/* ── List ─────────────────────────────────────────────────── */}
-        {isLoading && (
-          <div
-            className="py-20 text-center"
-            style={{
-              fontFamily: typography.p3.family,
-              fontSize: typography.p3.size,
-              color: color.textMuted,
-            }}
-          >
-            Fetching on-chain data…
-          </div>
-        )}
-
-        {isError && !isLoading && (
-          <div
-            className="py-20 text-center"
-            style={{
-              fontFamily: typography.p3.family,
-              fontSize: typography.p3.size,
-              color: color.error,
-            }}
-          >
-            Failed to load pool data. Check RPC connection.
-          </div>
-        )}
-
-        {!isLoading && !isError && (
-          <div className="flex flex-col gap-3">
-            {pools.map(p => (
-              <PoolCard key={p.address} pool={p} />
-            ))}
-          </div>
-        )}
+      {/* ── List ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col">
+        <PoolListHeader />
+        <div className="flex flex-col gap-px">
+          {/* Address alone is not unique across chains; key on both. */}
+          {ALL_POOLS.map((p) => (
+            <PoolListItem key={`${p.chainId}:${p.address}`} entry={p} />
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
