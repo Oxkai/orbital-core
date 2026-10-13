@@ -3,23 +3,32 @@
 import { useReadContracts } from "wagmi";
 import { type Address } from "viem";
 import { POOL_ABI, TOKEN_META } from "@/lib/contracts";
-import { monadTestnet } from "@/lib/wagmi";
+import { PRIMARY_CHAIN_ID } from "@/lib/crosschain";
+import { bandDepegPrice } from "@/lib/bands";
 import { type Pool } from "@/lib/mock/data";
-import { useVolume24h } from "@/lib/hooks/useVolume24h";
+import { usePoolVolume24h } from "@/lib/hooks/usePoolVolume24h";
 
 const WAD = 1e18;
 
-/** `withVolume` runs a log scan costing tens of requests — only the pool
- *  detail page shows the number, and enabling it everywhere starved the
- *  balance and reserve reads on the public RPC. Off by default. */
-export function usePool(poolAddress: Address, opts: { withVolume?: boolean } = {}) {
-  // Step 1 — static pool scalars
+/** `withVolume` also loads the pool's 24h swap volume: one subgraph query
+ *  where the pool is indexed, otherwise a log scan over the last day. Off by
+ *  default so pages that don't show volume don't pay for it. */
+export function usePool(
+  poolAddress: Address,
+  opts: { withVolume?: boolean; chainId?: number } = {}
+) {
+  // Every read is pinned to the pool's OWN chain. Hardcoding one chain here
+  // meant a pool address from a different deployment was queried against the
+  // wrong RPC and silently came back empty.
+  const chainId = opts.chainId ?? PRIMARY_CHAIN_ID;
+  // Step 1: static pool scalars
   const step1 = useReadContracts({
     contracts: [
-      { address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "N"        },
-      { address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "fee"      },
-      { address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "numTicks" },
-      { address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "slot0"    },
+      { address: poolAddress, chainId, abi: POOL_ABI, functionName: "N"        },
+      { address: poolAddress, chainId, abi: POOL_ABI, functionName: "fee"      },
+      { address: poolAddress, chainId, abi: POOL_ABI, functionName: "numTicks" },
+      { address: poolAddress, chainId, abi: POOL_ABI, functionName: "slot0"    },
+      { address: poolAddress, chainId, abi: POOL_ABI, functionName: "virtualReserve" },
     ],
   });
 
@@ -27,15 +36,16 @@ export function usePool(poolAddress: Address, opts: { withVolume?: boolean } = {
   const fee       = Number(step1.data?.[1]?.result ?? 0n);
   const numTicks  = Number(step1.data?.[2]?.result ?? 0n);
   const slot0     = step1.data?.[3]?.result as readonly [bigint, bigint, bigint, bigint, bigint] | undefined;
+  const virtualReserve = (step1.data?.[4]?.result as bigint | undefined) ?? 0n;
 
   const ready = n > 0 && numTicks > 0;
 
-  // Step 2 — per-asset and per-tick reads
+  // Step 2: per-asset and per-tick reads
   const step2 = useReadContracts({
     contracts: ready ? [
-      ...Array.from({ length: n },        (_, i) => ({ address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "assetAt"  as const, args: [BigInt(i)] as const })),
-      ...Array.from({ length: n },        (_, i) => ({ address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "reserves" as const, args: [BigInt(i)] as const })),
-      ...Array.from({ length: numTicks }, (_, i) => ({ address: poolAddress, chainId: monadTestnet.id, abi: POOL_ABI, functionName: "ticks"    as const, args: [BigInt(i)] as const })),
+      ...Array.from({ length: n },        (_, i) => ({ address: poolAddress, chainId, abi: POOL_ABI, functionName: "assetAt"  as const, args: [BigInt(i)] as const })),
+      ...Array.from({ length: n },        (_, i) => ({ address: poolAddress, chainId, abi: POOL_ABI, functionName: "reserves" as const, args: [BigInt(i)] as const })),
+      ...Array.from({ length: numTicks }, (_, i) => ({ address: poolAddress, chainId, abi: POOL_ABI, functionName: "ticks"    as const, args: [BigInt(i)] as const })),
     ] : [],
     query: { enabled: ready },
   });
@@ -45,51 +55,63 @@ export function usePool(poolAddress: Address, opts: { withVolume?: boolean } = {
   const tokenAddrs = Array.from({ length: n }, (_, i) =>
     (step2.data?.[i]?.result as Address | undefined) ?? ("0x" as Address)
   );
+  const reservesBig = Array.from({ length: n }, (_, i) =>
+    (step2.data?.[n + i]?.result as bigint | undefined) ?? 0n
+  );
+  const ticksRaw = Array.from({ length: numTicks }, (_, i) => {
+    const r = step2.data?.[2 * n + i]?.result as readonly [bigint, bigint, boolean] | undefined;
+    return r;
+  });
 
   // Every asset address must have resolved before the pool is usable. Without
   // this the unresolved ones all collapse to the "0x" placeholder, which both
   // renders ghost tokens and gives React duplicate keys.
   const addressesResolved = tokenAddrs.length > 0 && tokenAddrs.every(a => a.length === 42);
-  const reservesBig = Array.from({ length: n }, (_, i) =>
-    (step2.data?.[n + i]?.result as bigint | undefined) ?? 0n
-  );
-  const ticksRaw = Array.from({ length: numTicks }, (_, i) => {
-    const r = step2.data?.[2 * n + i]?.result as readonly [bigint, bigint, boolean, bigint, bigint] | undefined;
-    return r;
-  });
 
   const tokens = tokenAddrs.map(addr => {
     const meta = TOKEN_META[addr.toLowerCase()] ?? { symbol: addr.slice(0, 6), name: addr, color: "#888", decimals: 18 };
     return { address: addr, symbol: meta.symbol, name: meta.name, color: meta.color, balance: 0 };
   });
 
-  const reserves = reservesBig.map(b => Number(b) / WAD);
+  // The engine quotes on the full (virtual) reserves; the tokens held are
+  // those less the virtual floor concentrated liquidity never pays out.
+  const reserves = reservesBig.map(b => Number(b > virtualReserve ? b - virtualReserve : 0n) / WAD);
   const tvl      = reserves.reduce((a, b) => a + b, 0);
 
-  const ticks = ticksRaw.map(t => ({
-    kWad:             t?.[0] ?? 0n,
-    r:                Number(t?.[1] ?? 0n) / WAD,
-    isInterior:       t?.[2] ?? true,
-    feeGrowthInside:  t?.[3] ?? 0n,
-    liquidityGross:   t?.[4] ?? 0n,
-    // compat fields expected by existing components
-    depegPrice:       0,
-    capitalEfficiency:0,
-  }));
+  // One tick per band on the menu; only bands holding liquidity are ticks of
+  // this pool. An empty band reads as not interior, and counting it would show
+  // a healthy pool as paused.
+  const ticks = ticksRaw.flatMap((t, band) => {
+    const r = t?.[1] ?? 0n;
+    if (r === 0n) return [];
+    return [{
+      band,
+      kWad:             t?.[0] ?? 0n,
+      r:                Number(r) / WAD,
+      isInterior:       t?.[2] ?? true,
+      depegPrice:       bandDepegPrice(band),
+      // compat field expected by existing components
+      capitalEfficiency:0,
+    }];
+  });
 
   const kBound = Number(slot0?.[3] ?? 0n);
   const rInt   = Number(slot0?.[2] ?? 0n) / WAD;
   const sumX   = slot0?.[0] ?? 0n;
 
-  const { volume24h, fees24h } = useVolume24h(fee, opts.withVolume === true);
+  const { volume24h, fees24h } = usePoolVolume24h(poolAddress, fee, opts.withVolume === true);
 
   const pool: Pool | null = ready && step2.data && addressesResolved ? {
-    address:             poolAddress,
+    address: poolAddress,
+    chainId,
     name:                tokens.map(t => t.symbol).join(" / "),
     tokens,
     fee,
     rInt,
     reserves,
+    reservesVirtual: reservesBig,
+    virtualReserve,
+    rIntWad: slot0?.[2] ?? 0n,
     ticks,
     tvl,
     volume24h,

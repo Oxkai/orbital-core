@@ -9,27 +9,40 @@ export type Token = {
 };
 
 export type Tick = {
+  /** Index on the hook's band menu (lib/bands.ts); also the position id. */
+  band:              number;
   kWad:              bigint;
   r:                 number;   // WAD / 1e18
   isInterior:        boolean;
-  feeGrowthInside?:  bigint;
-  liquidityGross?:   bigint;
-  // display compat (not computed — kept at 0 when from chain)
+  /** The band's depeg threshold (0 for full range). */
   depegPrice:        number;
   capitalEfficiency: number;
 };
 
 export type Pool = {
   address:             string;
+  /// Chain this deployment lives on. Without it a card cannot label itself or
+  /// build a correct explorer link, and every pool rendered as "Unichain".
+  chainId:             number;
   name:                string;
   tokens:              Token[];
   fee:                 number;
   rInt:                number;
-  reserves:            number[];  // WAD / 1e18
+  /** Tokens the pool actually holds per asset (WAD / 1e18): the engine's
+   *  reserve less the virtual part concentrated liquidity never pays out. */
+  reserves:            number[];
+  /** The engine's full (virtual) reserve per asset, WAD, for pool math. */
+  reservesVirtual:     bigint[];
+  /** Per-asset virtual reserve of the whole pool, WAD. */
+  virtualReserve:      bigint;
+  /** Interior radius, WAD (exact; `rInt` is the float view). */
+  rIntWad:             bigint;
   ticks:               Tick[];
+  /** Sum of the real reserves, in the engine's USD value units. */
   tvl:                 number;
-  volume24h:           number;
-  fees24h:             number;
+  /** USD over the last 24h; undefined until loaded (or not requested). */
+  volume24h?:          number;
+  fees24h?:            number;
   kBound:              number;
   sumX:                bigint;
   depeggedTokenIndices: number[];
