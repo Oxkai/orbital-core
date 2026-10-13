@@ -9,6 +9,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {IUniswapV4Router04} from "hookmate/interfaces/router/IUniswapV4Router04.sol";
@@ -18,6 +19,8 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {OrbitalHook} from "../src/OrbitalHook.sol";
 import {TickLib} from "../src/libraries/TickLib.sol";
+import {BandLib} from "../src/libraries/BandLib.sol";
+import {FullMath} from "../src/libraries/FullMath.sol";
 import {SphereMath} from "../src/libraries/SphereMath.sol";
 import {BaseTest} from "./utils/BaseTest.sol";
 
@@ -80,6 +83,17 @@ contract OrbitalHookTest is BaseTest {
     Currency c2;
     Currency cUnregistered;
 
+    // Bands on the hook's menu (`BandLib`), by index. Ids of ticks and shares
+    // are the band index, whatever order positions are opened in.
+    uint256 constant TIGHT = 0; // 0.9999, the narrowest band
+    uint256 constant MID = 19; // 0.95
+    uint256 constant FULL = 30; // full range
+
+    /// @dev The plane constant the hook books for `rWad` in `band`.
+    function _kOf(uint256 band, uint256 rWad) internal view returns (uint256) {
+        return FullMath.mulDiv(hook.bandKNorm(band), rWad, 1e18);
+    }
+
     uint160 constant HOOK_FLAGS = uint160(
         Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
@@ -104,7 +118,7 @@ contract OrbitalHookTest is BaseTest {
 
         // Deploy hook at flagged address.
         address flagged = address(HOOK_FLAGS ^ (0x4444 << 144));
-        deployCodeTo("OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, permit2, regd, uint24(100), address(this)), flagged);
+        deployCodeTo("OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, regd, uint24(100), address(this)), flagged);
         hook = OrbitalHook(flagged);
 
         // Approve the hook to spend each registered asset (it transferFroms LP -> PoolManager).
@@ -122,11 +136,10 @@ contract OrbitalHookTest is BaseTest {
     }
 
     function test_constructor_storesAssetsInOrder() public view {
-        Currency[] memory got = hook.assets();
-        assertEq(got.length, 3);
-        assertEq(Currency.unwrap(got[0]), Currency.unwrap(c0));
-        assertEq(Currency.unwrap(got[1]), Currency.unwrap(c1));
-        assertEq(Currency.unwrap(got[2]), Currency.unwrap(c2));
+        assertEq(hook.N(), 3);
+        assertEq(Currency.unwrap(hook.assetAt(0)), Currency.unwrap(c0));
+        assertEq(Currency.unwrap(hook.assetAt(1)), Currency.unwrap(c1));
+        assertEq(Currency.unwrap(hook.assetAt(2)), Currency.unwrap(c2));
     }
 
     function test_constructor_indexOf() public view {
@@ -157,7 +170,7 @@ contract OrbitalHookTest is BaseTest {
         vm.expectRevert(abi.encodeWithSelector(OrbitalHook.InvalidAssetCount.selector, 1));
         // We rely on deployCodeTo to surface the revert from the constructor.
         deployCodeTo(
-            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, permit2, one, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4445 << 144))
+            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, one, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4445 << 144))
         );
     }
 
@@ -170,7 +183,7 @@ contract OrbitalHookTest is BaseTest {
         }
         vm.expectRevert(abi.encodeWithSelector(OrbitalHook.InvalidAssetCount.selector, 11));
         deployCodeTo(
-            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, permit2, eleven, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4446 << 144))
+            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, eleven, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4446 << 144))
         );
     }
 
@@ -181,7 +194,7 @@ contract OrbitalHookTest is BaseTest {
         dup[2] = c1; // duplicate
         vm.expectRevert(OrbitalHook.AssetsNotSortedOrUnique.selector);
         deployCodeTo(
-            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, permit2, dup, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4447 << 144))
+            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, dup, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4447 << 144))
         );
     }
 
@@ -192,7 +205,7 @@ contract OrbitalHookTest is BaseTest {
         bad[2] = c2;
         vm.expectRevert(OrbitalHook.AssetsNotSortedOrUnique.selector);
         deployCodeTo(
-            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, permit2, bad, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4448 << 144))
+            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, bad, uint24(100), address(this)), address(HOOK_FLAGS ^ (0x4448 << 144))
         );
     }
 
@@ -255,76 +268,84 @@ contract OrbitalHookTest is BaseTest {
     // addLiquidity (empty-pool mint)
     // ─────────────────────────────────────────────────────────────
 
+    /// @dev A tick's per-asset virtual reserve, exactly as the hook books it:
+    ///      xMin less a 1e-9 haircut.
+    function _virtualOf(uint256 rWad, uint256 kWad) internal pure returns (uint256) {
+        uint256 xMin = TickLib.xMin(rWad, 3, kWad);
+        return xMin - xMin / 1e9;
+    }
+
     function test_addLiquidity_emptyPool_mintsExpectedShares() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
+        uint256 kWad = _kOf(MID, rWad);
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        // The curve is credited the full equal-price point (virtual), but the LP
-        // funds only down to the tick's xMin. That gap is the concentration.
-        uint256 expectedVirtual = SphereMath.equalPricePoint(rWad, 3);
-        uint256 expectedReal = expectedVirtual - TickLib.xMin(rWad, 3, kWad);
-        assertLt(expectedReal, expectedVirtual, "concentrated tick costs less than full range");
+        // The engine books the full equal-price reserve; the LP deposits only
+        // the part above the tick's virtual floor.
+        uint256 expectedPerAsset = SphereMath.equalPricePoint(rWad, 3);
+        uint256 virt = _virtualOf(rWad, kWad);
+        uint256 realPerAsset = expectedPerAsset - virt;
 
-        (uint256 tickIdx, uint256[] memory amounts) = hook.addLiquidity(kWad, rWad, maxA);
+        (uint256 tickIdx, uint256[] memory amounts) = hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
-        assertEq(tickIdx, 0, "first tick");
+        assertEq(tickIdx, MID, "tick id is the band");
         assertEq(amounts.length, 3);
-        assertEq(amounts[0], expectedReal, "asset0 amount");
-        assertEq(amounts[1], expectedReal, "asset1 amount");
-        assertEq(amounts[2], expectedReal, "asset2 amount");
+        assertEq(amounts[0], realPerAsset, "asset0 amount");
+        assertEq(amounts[1], realPerAsset, "asset1 amount");
+        assertEq(amounts[2], realPerAsset, "asset2 amount");
+        assertEq(hook.tickVirtual(tickIdx), virt, "tick virtual");
+        assertEq(hook.virtualReserve(), virt, "pool virtual");
 
         // ERC-6909 share (tokenId = tickIdx).
         assertEq(hook.balanceOf(address(this), tickIdx), rWad, "6909 balance");
 
-        // slot0 tracks VIRTUAL reserves — what the curve prices on.
+        // slot0
         (uint256 sumX,, uint256 rInt, uint256 kBound,) = hook.slot0();
-        assertEq(sumX, expectedVirtual * 3, "sumX");
+        assertEq(sumX, expectedPerAsset * 3, "sumX");
         assertEq(rInt, rWad, "rInt");
         assertEq(kBound, 0, "kBound");
 
-        // reserves[] tracks REAL tokens custodied.
-        assertEq(hook.reserves(0), expectedReal);
-        assertEq(hook.reserves(1), expectedReal);
-        assertEq(hook.reserves(2), expectedReal);
+        // reserves
+        assertEq(hook.reserves(0), expectedPerAsset);
+        assertEq(hook.reserves(1), expectedPerAsset);
+        assertEq(hook.reserves(2), expectedPerAsset);
 
-        // virtualOffset closes the gap between the two.
-        assertEq(hook.virtualOffset(), expectedVirtual - expectedReal, "virtual offset");
-
-        // ticks
-        assertEq(hook.numTicks(), 1);
+        // The band's tick carries exactly this radius and the band's plane.
+        (uint256 tk, uint256 tr, bool tInt) = hook.ticks(MID);
+        assertEq(tr, rWad, "tick radius");
+        assertEq(tk, kWad, "tick plane is the band's kNorm times r");
+        assertTrue(tInt, "new tick is interior");
     }
 
     function test_addLiquidity_movesTokensIntoPoolManager() public {
         uint256 rWad = 50 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
+        uint256 kWad = _kOf(MID, rWad);
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        // Token movement is the REAL deposit, not the virtual credit.
-        uint256 expectedReal = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
+        uint256 expectedPerAsset = SphereMath.equalPricePoint(rWad, 3) - _virtualOf(rWad, kWad);
 
         uint256 balBeforeLP = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
         uint256 balBeforePM = MockERC20(Currency.unwrap(c0)).balanceOf(address(poolManager));
 
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
         assertEq(
             MockERC20(Currency.unwrap(c0)).balanceOf(address(this)),
-            balBeforeLP - expectedReal,
+            balBeforeLP - expectedPerAsset,
             "LP balance debited"
         );
         assertEq(
             MockERC20(Currency.unwrap(c0)).balanceOf(address(poolManager)),
-            balBeforePM + expectedReal,
+            balBeforePM + expectedPerAsset,
             "PoolManager credited"
         );
 
         // Hook holds matching ERC-6909 claim tokens against PoolManager.
         assertEq(
             poolManager.balanceOf(address(hook), c0.toId()),
-            expectedReal,
+            expectedPerAsset,
             "claim tokens minted to hook"
         );
     }
@@ -333,87 +354,123 @@ contract OrbitalHookTest is BaseTest {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
         vm.expectRevert(OrbitalHook.ZeroRWad.selector);
-        hook.addLiquidity(1 ether, 0, maxA);
+        hook.addLiquidity(MID, 0, maxA, block.timestamp);
     }
 
-    function test_addLiquidity_reverts_on_k_below_kMin() public {
-        uint256 rWad = 10 ether;
-        uint256 km = TickLib.kMin(rWad, 3);
+    function test_addLiquidity_reverts_on_unknown_band() public {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        vm.expectRevert(OrbitalHook.KOutOfRange.selector);
-        hook.addLiquidity(km - 1, rWad, maxA);
+        uint256 band = hook.numTicks();
+        vm.expectRevert(abi.encodeWithSelector(OrbitalHook.InvalidBand.selector, band));
+        hook.addLiquidity(band, 10 ether, maxA, block.timestamp);
+    }
+
+    function test_addLiquidity_reverts_after_deadline() public {
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+        vm.expectRevert(OrbitalHook.DeadlinePassed.selector);
+        hook.addLiquidity(MID, 10 ether, maxA, block.timestamp - 1);
     }
 
     function test_addLiquidity_reverts_on_slippage() public {
         uint256 rWad = 10 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = 1; // far too tight
         vm.expectRevert(); // SlippageExceeded — args vary
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
     }
 
-    function test_addLiquidity_secondMint_proRata() public {
-        // kMin/kMax scale linearly with rWad, so a kWad valid at one r is invalid at
-        // another. Use the same rWad twice — that's the realistic same-tick-merge path.
+    /// @notice A second mint in the same band joins the band's tick: same id,
+    ///         the radii add, and at a balanced pool it pays what the first did.
+    function test_addLiquidity_secondMint_same_band_merges() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
+        uint256 kWad = _kOf(MID, rWad);
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        hook.addLiquidity(kWad, rWad, maxA);
-        uint256 perAsset1 = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
+        uint256 perAsset1 = SphereMath.equalPricePoint(rWad, 3) - _virtualOf(rWad, kWad);
 
-        // Second mint: pool is balanced, so pro-rata yields the same per-asset amount.
-        (uint256 tickIdx2, uint256[] memory amounts2) = hook.addLiquidity(kWad, rWad, maxA);
+        (uint256 tickIdx2, uint256[] memory amounts2) = hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
-        assertEq(tickIdx2, 0, "tick merged");
+        assertEq(tickIdx2, MID, "same band, same tick");
         assertEq(amounts2[0], perAsset1);
         assertEq(amounts2[1], perAsset1);
         assertEq(amounts2[2], perAsset1);
 
-        assertEq(hook.balanceOf(address(this), tickIdx2), rWad * 2);
-        assertEq(hook.numTicks(), 1);
-
+        assertEq(hook.balanceOf(address(this), MID), 2 * rWad, "shares accumulate on the band");
+        (, uint256 tr,) = hook.ticks(MID);
+        assertEq(tr, 2 * rWad, "one tick, both radii");
         (, , uint256 rInt, ,) = hook.slot0();
         assertEq(rInt, rWad * 2);
     }
 
-    // DoS bound: the live tick array cannot grow past MAX_TICKS, so an attacker
-    // can't make every swap's crossing-scan unboundedly expensive by minting
-    // many distinct-k dust ticks. Merging into existing ticks still works.
-    function test_tick_cap_bounds_distinct_k_ticks() public {
-        uint256 rWad = 1 ether;
+    /// @notice Merging can never move a band's boundary.
+    ///
+    ///         `kNorm = k/r` is what detection compares against αNorm, so it IS
+    ///         the LP's depeg bound. An earlier merge added r without k and
+    ///         halved kNorm (observed live: a tick left below parity, unable to
+    ///         ever cross). Here k is derived from the band's fixed kNorm on
+    ///         every change of r, so any number of mints — of any sizes — leave
+    ///         the tick exactly on its band.
+    function test_band_merges_keep_the_band_boundary() public {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        uint256 km = TickLib.kMin(rWad, 3);
+        hook.addLiquidity(MID, 100 ether, maxA, block.timestamp);
+        hook.addLiquidity(MID, 37 ether, maxA, block.timestamp);
+        hook.addLiquidity(MID, 1_234 ether, maxA, block.timestamp);
 
-        // Fill the array to the cap (128) with distinct-k interior ticks.
-        for (uint256 i = 0; i < 128; ++i) {
-            hook.addLiquidity(km + i, rWad, maxA);
+        (uint256 k, uint256 r,) = hook.ticks(MID);
+        assertEq(r, 1_371 ether);
+        assertEq(k, _kOf(MID, r), "k is the band's kNorm times the total radius");
+    }
+
+    /// @notice Tick slots cannot be exhausted.
+    ///
+    ///         With a tick per position and a cap on ticks, filling every slot
+    ///         with dust (measured at ~2.5e-7 tokens) locked every later LP out.
+    ///         Positions now share their band's tick, so there are exactly as
+    ///         many ticks as bands: dust in every band still leaves any honest
+    ///         mint free to join one.
+    function test_dust_in_every_band_cannot_block_new_lps() public {
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+
+        // A real pool first, then the attacker's dust in every single band.
+        hook.addLiquidity(FULL, 1_000_000 ether, maxA, block.timestamp);
+        address attacker = address(0xA77AC);
+        for (uint256 i = 0; i < 3; ++i) {
+            Currency c = i == 0 ? c0 : i == 1 ? c1 : c2;
+            MockERC20(Currency.unwrap(c)).mint(attacker, 1_000 ether);
+            vm.prank(attacker);
+            MockERC20(Currency.unwrap(c)).approve(address(hook), type(uint256).max);
         }
-        assertEq(hook.numTicks(), 128, "array filled to MAX_TICKS");
+        vm.startPrank(attacker);
+        for (uint256 b = 0; b < hook.numTicks(); ++b) {
+            hook.addLiquidity(b, 1e9, maxA, block.timestamp);
+        }
+        vm.stopPrank();
 
-        // A 129th distinct-k mint reverts rather than growing the scan unboundedly.
-        vm.expectRevert(OrbitalHook.TooManyTicks.selector);
-        hook.addLiquidity(km + 128, rWad, maxA);
-
-        // Merging into an existing k still works and does not grow the array.
-        hook.addLiquidity(km, rWad, maxA);
-        assertEq(hook.numTicks(), 128, "merge does not grow the array past the cap");
+        // Every band's tick is taken, and an honest LP still gets in — into
+        // any band, sharing the attacker's tick there.
+        for (uint256 b = 0; b < hook.numTicks(); b += 5) {
+            (uint256 tickIdx,) = hook.addLiquidity(b, 500 ether, maxA, block.timestamp);
+            assertEq(tickIdx, b);
+            assertEq(hook.balanceOf(address(this), b), b == FULL ? 1_000_000 ether + 500 ether : 500 ether);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
     // beforeSwap (Phase B: within-tick only)
     // ─────────────────────────────────────────────────────────────
 
+    /// @dev One full-range tick: deep enough that the swap tests below never
+    ///      reach a boundary, which is what they are not testing.
     function _seedSinglePoolWithLiquidity(uint256 rWad) internal returns (PoolKey memory key) {
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(FULL, rWad, maxA, block.timestamp);
 
         key = PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
@@ -490,13 +547,130 @@ contract OrbitalHookTest is BaseTest {
         assertApproxEqAbs(hook.feeGrowthGlobal(0), expectedFee * 1e18 / 1_000 ether, 1, "fee growth global");
     }
 
-    function test_swap_reverts_on_exactOutput() public {
+    // ─────────────────────────────────────────────────────────────
+    // Exact output
+    //
+    // v4 lets a trade fix either side: `amountSpecified < 0` fixes what the
+    // trader pays, `> 0` what they receive. The engine serves both, so routers
+    // and quoters that work by output — the usual way a UI quotes "I want 100
+    // USDC" — can use the pool.
+    // ─────────────────────────────────────────────────────────────
+
+    function test_exactOutput_delivers_exactly_what_was_asked() public {
         PoolKey memory key = _seedSinglePoolWithLiquidity(1_000 ether);
 
-        vm.expectRevert();
+        uint256 want = 10 ether;
+        uint256 inBefore = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
+        uint256 outBefore = MockERC20(Currency.unwrap(c1)).balanceOf(address(this));
+
         swapRouter.swapTokensForExactTokens(
-            1 ether, type(uint256).max, true, key, "", address(this), block.timestamp
+            want, type(uint256).max, true, key, "", address(this), block.timestamp
         );
+
+        uint256 got = MockERC20(Currency.unwrap(c1)).balanceOf(address(this)) - outBefore;
+        uint256 paid = inBefore - MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
+        assertEq(got, want, "trader must receive exactly the amount specified");
+        // Same-peg assets, so the input is the output plus the fee and the
+        // curve's slippage — here 10 of a ~420 reserve, a deliberately shallow
+        // test pool, so a couple of percent. `_agrees_with_exactInput` is what
+        // pins the price; this only pins that it is a price at all.
+        assertGe(paid, want, "exact output must cost at least its face value");
+        assertLe(paid, want * 105 / 100, "exact output cost is near parity");
+    }
+
+    /// @notice The two halves of the engine must agree: buying Y by naming Y
+    ///         costs what naming the input that yields Y costs. A gap either way
+    ///         would be free value for whoever picks the cheaper side.
+    function test_exactOutput_agrees_with_exactInput() public {
+        uint256 amountIn = 10 ether;
+
+        uint256 snap = vm.snapshotState();
+        PoolKey memory key = _seedSinglePoolWithLiquidity(1_000 ether);
+        uint256 outBefore = MockERC20(Currency.unwrap(c1)).balanceOf(address(this));
+        swapRouter.swapExactTokensForTokens(amountIn, 0, true, key, "", address(this), block.timestamp);
+        uint256 outFromExactIn = MockERC20(Currency.unwrap(c1)).balanceOf(address(this)) - outBefore;
+        vm.revertToState(snap);
+
+        key = _seedSinglePoolWithLiquidity(1_000 ether);
+        uint256 inBefore = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
+        swapRouter.swapTokensForExactTokens(
+            outFromExactIn, type(uint256).max, true, key, "", address(this), block.timestamp
+        );
+        uint256 paid = inBefore - MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
+
+        // Both legs round the pool's way, so the exact-output price may be a
+        // hair dearer, never cheaper, and only by rounding.
+        assertGe(paid, amountIn, "buying the same output must not be cheaper");
+        assertApproxEqRel(paid, amountIn, 1e12, "the two sides must quote one price");
+    }
+
+    function test_exactOutput_charges_the_fee() public {
+        PoolKey memory key = _seedSinglePoolWithLiquidity(1_000 ether);
+
+        uint256 want = 100 ether;
+        uint256 inBefore = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
+        swapRouter.swapTokensForExactTokens(
+            want, type(uint256).max, true, key, "", address(this), block.timestamp
+        );
+        uint256 paid = inBefore - MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
+
+        // fee=100 (1bp) is charged on the input, so it is `paid * 100 / 1e6`.
+        assertApproxEqAbs(hook.feesAccrued(0), paid * 100 / 1_000_000, 2, "fee on the input");
+        assertEq(hook.feesAccrued(1), 0, "no fee on the output asset");
+    }
+
+    /// @notice An exact-output trade must walk band crossings like any other:
+    ///         the tight band pins, and the trader still receives exactly what
+    ///         they asked for.
+    function test_exactOutput_crosses_a_tick() public {
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+        hook.addLiquidity(TIGHT, 1_000 ether, maxA, block.timestamp);
+        hook.addLiquidity(FULL, 500 ether, maxA, block.timestamp);
+
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
+        poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
+        assertTrue(_isInterior(TIGHT), "tight band starts interior");
+
+        // The 0.9999 band pins on the slightest move, so a small buy crosses
+        // it; asking for more than the backstop alone can then sell would be
+        // refused instead (`_rejects_more_than_the_pool_can_sell`).
+        uint256 want = hook.reserves(1) * 2 / 100;
+        uint256 outBefore = MockERC20(Currency.unwrap(c1)).balanceOf(address(this));
+        swapRouter.swapTokensForExactTokens(
+            want, type(uint256).max, true, key, "", address(this), block.timestamp
+        );
+
+        assertEq(
+            MockERC20(Currency.unwrap(c1)).balanceOf(address(this)) - outBefore, want, "exact output across a crossing"
+        );
+        assertFalse(_isInterior(TIGHT), "tight band crossed to its boundary");
+        assertTrue(_isInterior(FULL), "backstop still interior");
+    }
+
+    /// @notice More output than the pool can sell is refused by name, not
+    ///         filled at an invented price.
+    function test_exactOutput_rejects_more_than_the_pool_can_sell() public {
+        PoolKey memory key = _seedSinglePoolWithLiquidity(100 ether);
+
+        try swapRouter.swapTokensForExactTokens(
+            hook.reserves(1) * 2, type(uint256).max, true, key, "", address(this), block.timestamp
+        ) returns (BalanceDelta) {
+            fail();
+        } catch (bytes memory reason) {
+            assertTrue(
+                _revertContains(reason, OrbitalHook.SwapExceedsLiquidity.selector)
+                    || _revertContains(reason, OrbitalHook.SwapBeyondZeroPrice.selector),
+                "must be refused as beyond the pool's liquidity"
+            );
+        }
+    }
+
+    function test_exactOutput_reverts_on_zero() public {
+        PoolKey memory key = _seedSinglePoolWithLiquidity(1_000 ether);
+        vm.expectRevert();
+        swapRouter.swapTokensForExactTokens(0, type(uint256).max, true, key, "", address(this), block.timestamp);
     }
 
     // M3 regression: amountIn beyond int128 max would silently wrap when cast
@@ -537,7 +711,7 @@ contract OrbitalHookTest is BaseTest {
     // ─────────────────────────────────────────────────────────────
 
     function _isInterior(uint256 i) internal view returns (bool isInt) {
-        (, , isInt, , ) = hook.ticks(i);
+        (, , isInt) = hook.ticks(i);
     }
 
     function test_swap_crosses_one_tick() public {
@@ -546,18 +720,17 @@ contract OrbitalHookTest is BaseTest {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        // Tight tick at kMin — kNorm == αNorm at empty-pool equal-price, so it
-        // is "ready to flip" the moment the price moves.
-        hook.addLiquidity(TickLib.kMin(r, 3), r, maxA);
-        // Backstop tick near kMax — stays interior throughout the test.
-        hook.addLiquidity(TickLib.kMax(rBack, 3) - 1 ether, rBack, maxA);
+        // The narrowest band (0.9999) pins as soon as the price moves; the
+        // full-range backstop stays interior throughout.
+        hook.addLiquidity(TIGHT, r, maxA, block.timestamp);
+        hook.addLiquidity(FULL, rBack, maxA, block.timestamp);
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
 
-        assertTrue(_isInterior(0), "tick0 starts interior");
-        assertTrue(_isInterior(1), "tick1 starts interior");
+        assertTrue(_isInterior(TIGHT), "tight tick starts interior");
+        assertTrue(_isInterior(FULL), "backstop starts interior");
 
         // 30% sweep — enough curve slippage for sumX to rise past the tight tick.
         uint256 amountIn = hook.reserves(0) * 30 / 100;
@@ -565,15 +738,155 @@ contract OrbitalHookTest is BaseTest {
             amountIn, 0, true, key, "", address(this), block.timestamp
         );
 
-        assertFalse(_isInterior(0), "tight tick crossed to boundary");
-        assertTrue(_isInterior(1), "backstop tick still interior");
+        assertFalse(_isInterior(TIGHT), "tight tick crossed to boundary");
+        assertTrue(_isInterior(FULL), "backstop tick still interior");
 
-        // Slot0 reflects the crossing: rInt shrunk by tick0's r, kBound got tick0's k.
-        // Tick at exactly kMin has computeS = 0, so sBound stays 0 — that's a property
-        // of the formula, not a bug. Tests using ticks at k=kMin won't bump sBound.
-        (, , uint256 rInt, uint256 kBound,) = hook.slot0();
+        // Slot0 reflects the crossing: rInt lost the tight tick's r, kBound and
+        // sBound gained its k and boundary radius.
+        (, , uint256 rInt, uint256 kBound, uint256 sBound) = hook.slot0();
+        (uint256 kTight,,) = hook.ticks(TIGHT);
         assertEq(rInt, rBack, "rInt now only backstop");
-        assertGt(kBound, 0, "kBound non-zero after crossing");
+        assertEq(kBound, kTight, "kBound is the pinned tick's k");
+        assertGt(sBound, 0, "sBound is the pinned tick's boundary radius");
+    }
+
+    /// @notice A pinned tick must come back to the interior when the price does.
+    ///
+    ///         This is the falling branch of the crossing math (paper §4.13 with
+    ///         Σx decreasing): the partial trade's input is out − D, so the
+    ///         quadratic's root must be at least D, and its linear coefficient is
+    ///         2(xᵢ − D − xⱼ). Neither was exercised by any other test. The
+    ///         return trade sells back the coin the depeg drained, which is the
+    ///         case the coefficient must stay exact for.
+    function test_boundary_tick_recovers_when_price_returns() public {
+        uint256 r = 1_000 ether;
+        uint256 rBack = 500 ether;
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+
+        // A band wide enough (0.95) that a round trip lands back inside it. Near
+        // the equal-price point αNorm moves with the SQUARE of the imbalance, so
+        // a tight band (0.999: 1.1e-7 of αNorm wide) sits closer to the peg than
+        // the imbalance a round trip's slippage and fees leave behind — the
+        // tick would rightly stay pinned. kMin's plane is the peg itself.
+        hook.addLiquidity(MID, r, maxA, block.timestamp);
+        hook.addLiquidity(FULL, rBack, maxA, block.timestamp);
+
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
+        poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
+
+        // Out: sell c0 until the tight band pins.
+        uint256 c1Before = MockERC20(Currency.unwrap(c1)).balanceOf(address(this));
+        swapRouter.swapExactTokensForTokens(hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp);
+        assertFalse(_isInterior(MID), "band did not pin");
+        uint256 got = MockERC20(Currency.unwrap(c1)).balanceOf(address(this)) - c1Before;
+
+        // Back: sell the drained coin for the abundant one.
+        swapRouter.swapExactTokensForTokens(got, 0, false, key, "", address(this), block.timestamp);
+
+        assertTrue(_isInterior(MID), "band did not recover");
+        (, , uint256 rInt, uint256 kBound, uint256 sBound) = hook.slot0();
+        assertEq(rInt, r + rBack, "rInt not restored");
+        assertEq(kBound, 0, "kBound not cleared");
+        assertEq(sBound, 0, "sBound not cleared");
+
+        // What that means for an LP: back at peg, they can leave. A tick left
+        // pinned would keep kBound ≠ 0 and block every burn in the pool.
+        uint256[] memory minA = new uint256[](3);
+        hook.removeLiquidity(MID, r, minA, block.timestamp);
+    }
+
+    /// @notice Any number of positions in one band are one tick and cross as
+    ///         one event.
+    ///
+    ///         A stack of separate ticks on one plane each took a slot of
+    ///         `MAX_CROSSINGS`, so more than that walled the price off: every swap
+    ///         reaching it reverted, and chunking could not help since no flip
+    ///         needs input. Positions in a band now share its tick.
+    function test_many_positions_in_one_band_cross_as_one_tick() public {
+        uint256 r = 10 ether;
+        uint256 rBack = 500 ether;
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+
+        uint256 count = 25; // MAX_CROSSINGS is 20
+        for (uint256 i = 0; i < count; ++i) {
+            hook.addLiquidity(TIGHT, r, maxA, block.timestamp);
+        }
+        hook.addLiquidity(FULL, rBack, maxA, block.timestamp);
+        (, uint256 tr,) = hook.ticks(TIGHT);
+        assertEq(tr, count * r, "one tick holds every position in the band");
+
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
+        poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
+
+        swapRouter.swapExactTokensForTokens(hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp);
+
+        assertFalse(_isInterior(TIGHT), "band not crossed");
+        (, , uint256 rInt,,) = hook.slot0();
+        assertEq(rInt, rBack, "only the backstop should remain interior");
+    }
+
+    /// @notice More DISTINCT bands than `MAX_CROSSINGS` in one swap fail with a
+    ///         named, clean revert.
+    ///
+    ///         Unlike a stack on one band (which crosses as a single event, see
+    ///         `test_many_positions_in_one_band_cross_as_one_tick`), each
+    ///         distinct band needs its own partial trade, and the cap bounds the
+    ///         swap's gas. Here chunking genuinely works — a smaller trade crosses
+    ///         fewer bands and persists — so the revert is a routing signal, not a
+    ///         wall.
+    function test_more_distinct_bands_than_MAX_CROSSINGS_reverts_cleanly() public {
+        uint256 r = 100 ether;
+        uint256 rBack = 500 ether;
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+
+        // The 25 narrowest bands (0.9999 down to 0.85): distinct planes, all
+        // inside the range a 30% sweep carries αNorm through.
+        for (uint256 i = 0; i < 25; ++i) {
+            hook.addLiquidity(i, r, maxA, block.timestamp);
+        }
+        hook.addLiquidity(FULL, rBack, maxA, block.timestamp);
+
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
+        poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
+
+        uint256 amountIn = hook.reserves(0) * 30 / 100;
+
+        // v4 wraps a reverting hook in `WrappedError`, so `TooManyCrossings` is
+        // nested rather than leading and `vm.expectRevert(selector)` will not
+        // match it. Catch the raw returndata and look for the selector inside,
+        // which asserts the specific cause rather than merely "it reverted".
+        try swapRouter.swapExactTokensForTokens(
+            amountIn, 0, true, key, "", address(this), block.timestamp
+        ) returns (BalanceDelta) {
+            fail();
+        } catch (bytes memory reason) {
+            assertTrue(
+                _revertContains(reason, OrbitalHook.TooManyCrossings.selector),
+                "must fail with TooManyCrossings, not some other error"
+            );
+        }
+
+        // The failed swap changed nothing: the pool is untouched and still quotes.
+        for (uint256 i = 0; i < 25; ++i) assertTrue(_isInterior(i), "state rolled back");
+    }
+
+    /// @dev Search revert data for a 4-byte selector. Needed because v4 nests a
+    ///      hook's own error inside `WrappedError` rather than surfacing it.
+    function _revertContains(bytes memory data, bytes4 sel) internal pure returns (bool) {
+        if (data.length < 4) return false;
+        for (uint256 i = 0; i + 4 <= data.length; ++i) {
+            if (
+                data[i] == sel[0] && data[i + 1] == sel[1] && data[i + 2] == sel[2]
+                    && data[i + 3] == sel[3]
+            ) return true;
+        }
+        return false;
     }
 
     function test_swap_does_not_cross_when_amount_small() public {
@@ -582,169 +895,213 @@ contract OrbitalHookTest is BaseTest {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        // Tick set up to be tight (would cross on large swap) plus a backstop.
-        hook.addLiquidity(TickLib.kMin(r, 3) + 5 ether, r, maxA);
-        hook.addLiquidity(TickLib.kMax(rBack, 3) - 1 ether, rBack, maxA);
+        // A 0.99 band (would cross on a large swap) plus a backstop.
+        uint256 band = BandLib.bandOf(0.99e18);
+        hook.addLiquidity(band, r, maxA, block.timestamp);
+        hook.addLiquidity(FULL, rBack, maxA, block.timestamp);
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
 
-        // Tiny swap should stay within the tightest tick.
+        // Tiny swap should stay inside the band.
         swapRouter.swapExactTokensForTokens(1 ether, 0, true, key, "", address(this), block.timestamp);
 
-        assertTrue(_isInterior(0), "tight tick still interior");
-        assertTrue(_isInterior(1), "backstop still interior");
+        assertTrue(_isInterior(band), "band still interior");
+        assertTrue(_isInterior(FULL), "backstop still interior");
     }
 
-    // H1 regression: a tick that was fully burned has r == 0 and stays in the
-    // array. Pre-fix, _detectCrossing would divide by zero on the next swap.
+    /// @notice A band emptied by a full burn is skipped by later swaps.
     function test_swap_after_full_burn_skips_dead_tick() public {
         uint256 r = 1_000 ether;
         uint256 rBack = 500 ether;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        uint256 kA = (TickLib.kMin(r, 3) + TickLib.kMax(r, 3)) / 2;
-        hook.addLiquidity(kA, r, maxA);                                     // tick 0
-        hook.addLiquidity(TickLib.kMax(rBack, 3) - 1 ether, rBack, maxA);   // tick 1 (backstop)
+        hook.addLiquidity(MID, r, maxA, block.timestamp);
+        hook.addLiquidity(FULL, rBack, maxA, block.timestamp);
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
 
-        // Fully burn tick 0 → tick 0 stays in the array with r == 0.
         uint256[] memory minA = new uint256[](3);
-        hook.removeLiquidity(0, r, minA);
+        hook.removeLiquidity(MID, r, minA, block.timestamp);
+        (, uint256 tr, bool tInt) = hook.ticks(MID);
+        assertEq(tr, 0, "band emptied");
+        assertFalse(tInt, "an empty band is not interior");
 
-        // Pre-fix this reverts inside FullMath.mulDiv(t.k, WAD, 0). Post-fix it succeeds.
         swapRouter.swapExactTokensForTokens(1 ether, 0, true, key, "", address(this), block.timestamp);
-
         assertGt(hook.reserves(1), 0, "swap settled output reserve");
     }
 
-    // H1 regression + M2 free-list: re-minting at the same k after a full burn
-    // must NOT silently resurrect a dead tick (different LP, different bookkeeping).
-    // With the free-list optimization, the slot is recycled — but the tick must
-    // be a *freshly* initialized interior tick, not a zombie.
-    function test_mint_after_full_burn_creates_fresh_tick() public {
+    /// @notice A band emptied and then minted into again comes back as a fresh
+    ///         interior tick: the band's plane, only the new radius, no fee
+    ///         history carried over from its previous life.
+    function test_mint_after_full_burn_revives_the_band() public {
         uint256 r = 100 ether;
-        uint256 kA = (TickLib.kMin(r, 3) + TickLib.kMax(r, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-
-        hook.addLiquidity(kA, r, maxA);                  // tick 0
         uint256[] memory minA = new uint256[](3);
-        hook.removeLiquidity(0, r, minA);                // tick 0 now dead (r == 0, free-listed)
 
-        hook.addLiquidity(kA, r, maxA);                  // reuses slot 0 with a fresh tick
+        hook.addLiquidity(MID, r, maxA, block.timestamp);
+        hook.removeLiquidity(MID, r, minA, block.timestamp);
+        hook.addLiquidity(MID, 2 * r, maxA, block.timestamp);
 
-        // Whatever slot it lands in, the live tick must be interior and freshly sized.
-        // Find it via the public ticks() getter on slot 0 (where it ought to be reused).
-        (uint256 tk, uint256 tr, bool tInt, , uint128 tLiq) = hook.ticks(0);
-        assertEq(tk, kA, "k preserved");
-        assertEq(tr, r, "r reset to fresh deposit");
-        assertTrue(tInt, "tick is interior");
-        assertEq(uint256(tLiq), r, "liquidityGross reset to fresh deposit");
+        (uint256 tk, uint256 tr, bool tInt) = hook.ticks(MID);
+        assertEq(tr, 2 * r, "only the new radius");
+        assertEq(tk, _kOf(MID, 2 * r), "on the band's plane");
+        assertTrue(tInt, "interior");
     }
 
-    // M2 regression: fully-burned tick slots feed a free-list, so a fresh
-    // mint at a DIFFERENT k recycles the slot instead of growing the array.
-    function test_burned_tick_slot_is_recycled_on_next_mint() public {
-        uint256 r = 100 ether;
-        uint256 kA = (TickLib.kMin(r, 3) + TickLib.kMax(r, 3)) / 2;
-        uint256 kB = kA + 10 ether;
+    /// @notice During a depeg a new position can open in any band the pool has
+    ///         not moved past, and it takes exactly its share of the interior.
+    ///
+    ///         Paper §4.10 (case 1): every interior tick holds the same
+    ///         normalised point, so the newcomer's reserves are (r / rInt) of
+    ///         the interior reserves — the total less what the pinned ticks hold
+    ///         (§4.11). Minting and then burning the same radius straight away
+    ///         must therefore hand the deposit back, less only rounding: any
+    ///         error in that attribution would show up as a gain or a loss here.
+    function test_mint_during_depeg_joins_the_interior_exactly() public {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        hook.addLiquidity(kA, r, maxA);                  // tick 0
-        uint256[] memory minA = new uint256[](3);
-        hook.removeLiquidity(0, r, minA);                // tick 0 freed
-        assertEq(hook.numTicks(), 1, "array does not shrink, slot just freed");
-
-        // Fresh mint at a different k recycles slot 0 — array stays length 1.
-        hook.addLiquidity(kB, r, maxA);
-        assertEq(hook.numTicks(), 1, "slot recycled, no array growth");
-        (uint256 tk, , bool tInt, , ) = hook.ticks(0);
-        assertEq(tk, kB, "slot now holds the new k");
-        assertTrue(tInt, "and is interior");
-    }
-
-    // H2 regression: mints must be blocked whenever any boundary tick exists,
-    // regardless of whether rInt is zero. Pre-fix, the rescue-mint path (rInt
-    // == 0) would silently merge into a boundary tick via _findOrCreateTick and
-    // desync kBound / sBound; the proper behavior is to reject the mint until
-    // the pool fully recovers (kBound == 0).
-    function test_mint_blocked_while_boundary_tick_exists() public {
-        uint256[] memory maxA = new uint256[](3);
-        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-
-        // Tight tick A that boundary-flips on a moderate swap, plus a backstop B.
-        uint256 rA = 200 ether;
-        uint256 kA = TickLib.kMin(rA, 3);
-        hook.addLiquidity(kA, rA, maxA);                                                 // tick 0
-        uint256 rB = 1_000 ether;
-        hook.addLiquidity(TickLib.kMax(rB, 3) - 1 ether, rB, maxA);                      // tick 1
+        hook.addLiquidity(TIGHT, 200 ether, maxA, block.timestamp);
+        hook.addLiquidity(FULL, 1_000 ether, maxA, block.timestamp);
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
-
-        // Flip tick 0 to boundary (tick 1 stays interior, so rInt > 0).
         swapRouter.swapExactTokensForTokens(
             hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp
         );
-        assertFalse(_isInterior(0), "tick 0 boundary");
-        (, , , uint256 kBound,) = hook.slot0();
-        assertGt(kBound, 0, "kBound set by the boundary tick");
+        assertFalse(_isInterior(TIGHT), "depeg pinned the tight band");
 
-        // A fresh mint at the boundary tick's k must revert — pre-fix it would
-        // silently merge into tick 0 (boundary) and break the invariant.
-        vm.expectRevert(OrbitalHook.MintBlockedByBoundaryTicks.selector);
-        hook.addLiquidity(kA, rA, maxA);
+        // A band the pool has moved past is refused...
+        vm.expectRevert(OrbitalHook.TickOutsideItsBand.selector);
+        hook.addLiquidity(TIGHT, 10 ether, maxA, block.timestamp);
 
-        // A mint at any other valid k must also revert for the same reason.
-        uint256 kMid = (TickLib.kMin(rA, 3) + TickLib.kMax(rA, 3)) / 2;
-        vm.expectRevert(OrbitalHook.MintBlockedByBoundaryTicks.selector);
-        hook.addLiquidity(kMid, rA, maxA);
+        // ...one still ahead of it is not.
+        address lp = address(0x1F);
+        for (uint256 i = 0; i < 3; ++i) {
+            Currency c = i == 0 ? c0 : i == 1 ? c1 : c2;
+            MockERC20(Currency.unwrap(c)).mint(lp, 1_000 ether);
+            vm.prank(lp);
+            MockERC20(Currency.unwrap(c)).approve(address(hook), type(uint256).max);
+        }
+        vm.prank(lp);
+        (, uint256[] memory put) = hook.addLiquidity(FULL, 100 ether, maxA, block.timestamp);
+        assertGt(put[0], put[1], "the interior is c0-heavy after selling c0, and so is the deposit");
+
+        uint256[] memory minA = new uint256[](3);
+        vm.prank(lp);
+        uint256[] memory back = hook.removeLiquidity(FULL, 100 ether, minA, block.timestamp);
+        for (uint256 i = 0; i < 3; ++i) {
+            assertApproxEqAbs(back[i], put[i], 4, "mint then burn must round-trip the deposit");
+        }
     }
 
-    // While ANY tick is on boundary (a coin has depegged), all burns are blocked
-    // — both the boundary tick AND otherwise-interior ticks. The pro-rata payout
-    // (total reserves ÷ interior rInt) only holds when the pool is fully interior;
-    // allowing an interior burn here would pay out the parked boundary tokens and
-    // strand the boundary LP. Withdrawals resume once the coin re-pegs.
-    function test_burn_blocked_while_boundary_tick_exists() public {
+    /// @notice An LP can leave during a depeg, whether their band is pinned or
+    ///         still interior, and every LP together takes out exactly what the
+    ///         pool holds.
+    ///
+    ///         Each tick's holding is fixed by the paper: a pinned tick holds
+    ///         k/√n of every coin plus s along ŵ (§4.11), an interior tick its
+    ///         share of the rest (§4.10). If the split were wrong, the first LP
+    ///         out would take from the second, and the pool's real reserves
+    ///         would not add up to what the two are paid.
+    function test_burn_during_depeg_pays_each_tick_its_own_holding() public {
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
         uint256 rA = 200 ether;
-        uint256 kA = TickLib.kMin(rA, 3);
-        hook.addLiquidity(kA, rA, maxA);                              // tick 0 (tight)
         uint256 rB = 1_000 ether;
-        hook.addLiquidity(TickLib.kMax(rB, 3) - 1 ether, rB, maxA);   // tick 1 (backstop)
+        hook.addLiquidity(TIGHT, rA, maxA, block.timestamp);
+        hook.addLiquidity(FULL, rB, maxA, block.timestamp);
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
         poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
-
-        // Flip tick 0 to boundary.
         swapRouter.swapExactTokensForTokens(
             hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp
         );
-        assertFalse(_isInterior(0), "tick 0 on boundary");
-        assertTrue(_isInterior(1), "tick 1 still interior");
+        assertFalse(_isInterior(TIGHT), "tight band pinned");
+        assertTrue(_isInterior(FULL), "backstop interior");
+
+        uint256[3] memory real;
+        for (uint8 i = 0; i < 3; ++i) real[i] = hook.reserves(i) - hook.virtualReserve();
 
         uint256[] memory minA = new uint256[](3);
+        uint256[] memory outPinned = hook.removeLiquidity(TIGHT, rA, minA, block.timestamp);
+        uint256[] memory outInterior = hook.removeLiquidity(FULL, rB, minA, block.timestamp);
 
-        // Burning the boundary tick is blocked.
-        vm.expectRevert(OrbitalHook.BurnBlockedByBoundaryTicks.selector);
-        hook.removeLiquidity(0, rA, minA);
+        // A pinned band holds the coin that depegged (c0, sold into the pool)
+        // well above its peg share, and the least of the drained one (c1).
+        assertGt(outPinned[0], outPinned[1], "pinned tick holds the depegged coin");
 
-        // Burning the still-interior backstop is ALSO blocked — otherwise it would
-        // drain tick 0's parked reserves and strand that LP.
-        vm.expectRevert(OrbitalHook.BurnBlockedByBoundaryTicks.selector);
-        hook.removeLiquidity(1, rB, minA);
+        for (uint8 i = 0; i < 3; ++i) {
+            assertApproxEqAbs(outPinned[i] + outInterior[i], real[i], 8, "payouts must add up to the pool");
+        }
+        (, , uint256 rInt, uint256 kBound, uint256 sBound) = hook.slot0();
+        assertEq(rInt, 0);
+        assertEq(kBound, 0);
+        assertEq(sBound, 0);
+    }
+
+    /// @notice A band pinned by a depeg and then burned out entirely must leave
+    ///         no trace in the band bitmaps: a stale "pinned" bit would make the
+    ///         empty band a crossing candidate and refuse every future deposit.
+    function test_pinned_band_burned_out_leaves_no_stale_bit() public {
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+        hook.addLiquidity(TIGHT, 200 ether, maxA, block.timestamp);
+        hook.addLiquidity(FULL, 1_000 ether, maxA, block.timestamp);
+
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
+        poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
+        swapRouter.swapExactTokensForTokens(hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp);
+        assertFalse(_isInterior(TIGHT), "tight band pinned");
+        assertEq(_bandBits() >> 128, 1 << TIGHT, "pinned bit set");
+
+        hook.removeLiquidity(TIGHT, 200 ether, new uint256[](3), block.timestamp);
+
+        uint256 bits = _bandBits();
+        assertEq(bits >> 128, 0, "a burned-out pinned band left its pinned bit");
+        assertEq(bits & type(uint128).max, 1 << FULL, "only the backstop is live");
+
+        // Trading back through the empty band's plane crosses nothing.
+        swapRouter.swapExactTokensForTokens(hook.reserves(1) * 30 / 100, 0, false, key, "", address(this), block.timestamp);
+        assertEq(_bandBits(), 1 << FULL, "the empty band came back to life");
+    }
+
+    /// @dev The hook's band bitmaps (see Solvency.invariant.t.sol for the slot
+    ///      and how to regenerate it).
+    function _bandBits() internal view returns (uint256) {
+        return uint256(vm.load(address(hook), bytes32(uint256(111))));
+    }
+
+    /// @notice With every interior tick gone, nothing is left to join: a mint
+    ///         waits for the pinned ticks to recover or leave.
+    function test_mint_blocked_when_only_pinned_liquidity_remains() public {
+        uint256[] memory maxA = new uint256[](3);
+        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
+
+        hook.addLiquidity(TIGHT, 200 ether, maxA, block.timestamp);
+        hook.addLiquidity(FULL, 1_000 ether, maxA, block.timestamp);
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
+        poolManager.initialize(key, Constants.SQRT_PRICE_1_1);
+        swapRouter.swapExactTokensForTokens(
+            hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp
+        );
+
+        uint256[] memory minA = new uint256[](3);
+        hook.removeLiquidity(FULL, 1_000 ether, minA, block.timestamp);
+
+        vm.expectRevert(OrbitalHook.MintBlockedByBoundaryTicks.selector);
+        hook.addLiquidity(FULL, 10 ether, maxA, block.timestamp);
     }
 
     // Fee conservation across a depeg (regression for the fee-misattribution bug):
@@ -756,9 +1113,9 @@ contract OrbitalHookTest is BaseTest {
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
         uint256 rA = 200 ether;
-        hook.addLiquidity(TickLib.kMin(rA, 3), rA, maxA);               // tick 0 (tight)
+        hook.addLiquidity(TIGHT, rA, maxA, block.timestamp);               // tick 0 (tight)
         uint256 rB = 1_000 ether;
-        hook.addLiquidity(TickLib.kMax(rB, 3) - 1 ether, rB, maxA);     // tick 1 (backstop)
+        hook.addLiquidity(FULL, rB, maxA, block.timestamp);     // tick 1 (backstop)
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
@@ -768,7 +1125,7 @@ contract OrbitalHookTest is BaseTest {
         // then more swaps that accrue fees while tick 0 is out (only tick 1 earns).
         swapRouter.swapExactTokensForTokens(5 ether, 0, true, key, "", address(this), block.timestamp);
         swapRouter.swapExactTokensForTokens(hook.reserves(0) * 30 / 100, 0, true, key, "", address(this), block.timestamp);
-        assertFalse(_isInterior(0), "tick 0 on boundary");
+        assertFalse(_isInterior(TIGHT), "tight band on boundary");
         swapRouter.swapExactTokensForTokens(20 ether, 0, true, key, "", address(this), block.timestamp);
 
         // All fees were taken on asset 0 (zeroForOne). Snapshot the bucket.
@@ -777,8 +1134,8 @@ contract OrbitalHookTest is BaseTest {
 
         // Both positions can collect without FeeBucketShort, and the total paid out
         // never exceeds what the pool actually accrued (conservation).
-        uint256[] memory fA = hook.collect(0);
-        uint256[] memory fB = hook.collect(1);
+        uint256[] memory fA = hook.collect(TIGHT);
+        uint256[] memory fB = hook.collect(FULL);
         assertLe(fA[0] + fB[0], bucket0, "collected more fees than accrued");
     }
 
@@ -788,18 +1145,18 @@ contract OrbitalHookTest is BaseTest {
 
     function test_removeLiquidity_returnsProRataAssets() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
+        uint256 kWad = _kOf(MID, rWad);
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
-        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
+        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3) - _virtualOf(rWad, kWad);
 
         // Burn half.
         uint256 halfR = rWad / 2;
         uint256[] memory minA = new uint256[](3);
         // empty pool → balanced → withdrawal is pro-rata at the deposited rate.
-        uint256[] memory amounts = hook.removeLiquidity(0, halfR, minA);
+        uint256[] memory amounts = hook.removeLiquidity(MID, halfR, minA, block.timestamp);
 
         assertEq(amounts.length, 3);
         // Pool was perfectly balanced; pro-rata over rInt of the half should yield half of each deposit.
@@ -808,7 +1165,7 @@ contract OrbitalHookTest is BaseTest {
         assertApproxEqAbs(amounts[2], perAssetDeposited / 2, 1, "asset2 amount");
 
         // ERC-6909 share burned.
-        assertEq(hook.balanceOf(address(this), 0), rWad - halfR);
+        assertEq(hook.balanceOf(address(this), MID), rWad - halfR);
 
         // slot0.rInt halved.
         (, , uint256 rInt, ,) = hook.slot0();
@@ -817,18 +1174,18 @@ contract OrbitalHookTest is BaseTest {
 
     function test_removeLiquidity_sendsTokensToOwner() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
+        uint256 kWad = _kOf(MID, rWad);
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
-        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3) - TickLib.xMin(rWad, 3, kWad);
+        uint256 perAssetDeposited = SphereMath.equalPricePoint(rWad, 3) - _virtualOf(rWad, kWad);
 
         uint256 balC0Before = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
         uint256 pmBalBefore = MockERC20(Currency.unwrap(c0)).balanceOf(address(poolManager));
 
         uint256[] memory minA = new uint256[](3);
-        hook.removeLiquidity(0, rWad, minA);
+        hook.removeLiquidity(MID, rWad, minA, block.timestamp);
 
         assertEq(
             MockERC20(Currency.unwrap(c0)).balanceOf(address(this)),
@@ -845,20 +1202,19 @@ contract OrbitalHookTest is BaseTest {
     function test_removeLiquidity_reverts_on_no_shares() public {
         uint256[] memory minA = new uint256[](3);
         vm.expectRevert(OrbitalHook.NotEnoughLiquidity.selector);
-        hook.removeLiquidity(0, 1 ether, minA);
+        hook.removeLiquidity(MID, 1 ether, minA, block.timestamp);
     }
 
     function test_removeLiquidity_reverts_on_slippage() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
         uint256[] memory minA = new uint256[](3);
         minA[0] = minA[1] = minA[2] = type(uint256).max; // impossibly high
         vm.expectRevert();
-        hook.removeLiquidity(0, rWad / 2, minA);
+        hook.removeLiquidity(MID, rWad / 2, minA, block.timestamp);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -880,7 +1236,7 @@ contract OrbitalHookTest is BaseTest {
         uint256 balC0Before = MockERC20(Currency.unwrap(c0)).balanceOf(address(this));
         uint256 balC1Before = MockERC20(Currency.unwrap(c1)).balanceOf(address(this));
 
-        uint256[] memory fees = hook.collect(0);
+        uint256[] memory fees = hook.collect(FULL);
 
         assertApproxEqAbs(fees[0], feeOnC0, 1, "c0 fees collected");
         assertApproxEqAbs(fees[1], feeOnC1, 1, "c1 fees collected");
@@ -896,13 +1252,12 @@ contract OrbitalHookTest is BaseTest {
 
     function test_collect_reverts_when_nothing_owed() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
         vm.expectRevert(OrbitalHook.NothingOwed.selector);
-        hook.collect(0);
+        hook.collect(MID);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -911,20 +1266,25 @@ contract OrbitalHookTest is BaseTest {
 
     function test_shares_cannot_be_transferred() public {
         uint256 rWad = 50 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
-        // Direct transfer.
-        vm.expectRevert(OrbitalHook.SharesAreSoulbound.selector);
-        hook.transfer(address(0xBEEF), 0, 1);
-
-        // Indirect via approve + transferFrom.
-        // (approve itself succeeds; the transferFrom is what reverts.)
-        hook.approve(address(this), 0, type(uint256).max);
-        vm.expectRevert(OrbitalHook.SharesAreSoulbound.selector);
-        hook.transferFrom(address(this), address(0xBEEF), 0, 1);
+// Shares are soulbound: ERC-6909's movement surface is not implemented
+        // at all, so these calls have no function to reach and revert.
+        (bool ok,) = address(hook).call(
+            abi.encodeWithSignature("transfer(address,uint256,uint256)", address(0xBEEF), MID, uint256(1)));
+        assertFalse(ok, "transfer must not succeed");
+        (ok,) = address(hook).call(abi.encodeWithSignature(
+            "transferFrom(address,address,uint256,uint256)", address(this), address(0xBEEF), MID, uint256(1)));
+        assertFalse(ok, "transferFrom must not succeed");
+        assertEq(hook.balanceOf(address(this), MID), rWad, "shares moved");
+        (ok,) = address(hook).call(
+            abi.encodeWithSignature("approve(address,uint256,uint256)", address(0xBEEF), MID, uint256(1)));
+        assertFalse(ok, "approve must not succeed");
+        (ok,) = address(hook).call(
+            abi.encodeWithSignature("setOperator(address,bool)", address(0xBEEF), true));
+        assertFalse(ok, "setOperator must not succeed");
     }
 
     function test_constructor_accepts_sub_18_decimal_token() public {
@@ -947,7 +1307,7 @@ contract OrbitalHookTest is BaseTest {
         address hookAddr = address(HOOK_FLAGS ^ (0x4449 << 144));
         deployCodeTo(
             "OrbitalHook.sol:OrbitalHook",
-            abi.encode(poolManager, permit2, list, uint24(100), address(this)),
+            abi.encode(poolManager, list, uint24(100), address(this)),
             hookAddr
         );
 
@@ -980,7 +1340,7 @@ contract OrbitalHookTest is BaseTest {
         );
         deployCodeTo(
             "OrbitalHook.sol:OrbitalHook",
-            abi.encode(poolManager, permit2, list, uint24(100), address(this)),
+            abi.encode(poolManager, list, uint24(100), address(this)),
             address(HOOK_FLAGS ^ (0x444A << 144))
         );
     }
@@ -992,7 +1352,7 @@ contract OrbitalHookTest is BaseTest {
         vm.expectRevert(abi.encodeWithSelector(OrbitalHook.FeeTooLow.selector, uint24(9)));
         deployCodeTo(
             "OrbitalHook.sol:OrbitalHook",
-            abi.encode(poolManager, permit2, regd, uint24(9), address(this)),
+            abi.encode(poolManager, regd, uint24(9), address(this)),
             address(HOOK_FLAGS ^ (0x444B << 144))
         );
     }
@@ -1018,7 +1378,7 @@ contract OrbitalHookTest is BaseTest {
 
         address flagged = address(HOOK_FLAGS ^ (0x444A << 144));
         deployCodeTo(
-            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, permit2, list, uint24(100), address(this)), flagged
+            "OrbitalHook.sol:OrbitalHook", abi.encode(poolManager, list, uint24(100), address(this)), flagged
         );
         OrbitalHook usdtHook = OrbitalHook(flagged);
 
@@ -1027,13 +1387,12 @@ contract OrbitalHookTest is BaseTest {
         }
 
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
         // Would revert with the old raw transferFrom; passes with SafeERC20.
-        usdtHook.addLiquidity(kWad, rWad, maxA);
-        assertEq(usdtHook.balanceOf(address(this), 0), rWad);
+        usdtHook.addLiquidity(MID, rWad, maxA, block.timestamp);
+        assertEq(usdtHook.balanceOf(address(this), MID), rWad);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1042,10 +1401,9 @@ contract OrbitalHookTest is BaseTest {
 
     function test_swaps_on_different_pair_views_share_engine_state() public {
         uint256 r = 1_000 ether;
-        uint256 kWad = (TickLib.kMin(r, 3) + TickLib.kMax(r, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, r, maxA);
+        hook.addLiquidity(FULL, r, maxA, block.timestamp);
 
         // Initialize TWO pair-views over the same hook state.
         PoolKey memory key01 =
@@ -1090,6 +1448,37 @@ contract OrbitalHookTest is BaseTest {
         swapRouter.swapExactTokensForTokens(huge, 0, true, key, "", address(this), block.timestamp);
     }
 
+    /// @notice On a full-range sphere the input's price reaches zero at
+    ///         x_in = r, and the surface still has solutions past it — ones that
+    ///         pay LESS than selling up to that point would. The pool must stop
+    ///         there rather than quote a trade no rational seller wants.
+    function test_swap_cannot_sell_past_zero_price() public {
+        uint256 r = 100 ether;
+        PoolKey memory key = _seedSinglePoolWithLiquidity(r);
+        uint256 x0 = hook.reserves(0);
+
+        // Just short of x_in = r (net of the fee) fills normally.
+        uint256 snap = vm.snapshotState();
+        uint256 below = (r - x0) * 99 / 100;
+        uint256 c1Before = MockERC20(Currency.unwrap(c1)).balanceOf(address(this));
+        swapRouter.swapExactTokensForTokens(below, 0, true, key, "", address(this), block.timestamp);
+        uint256 outBelow = MockERC20(Currency.unwrap(c1)).balanceOf(address(this)) - c1Before;
+        vm.revertToState(snap);
+
+        // Past it the curve would still "solve" — for less output than `below`
+        // earned — so the trade is refused by name.
+        uint256 past = (r - x0) * 3 / 2;
+        try swapRouter.swapExactTokensForTokens(past, 0, true, key, "", address(this), block.timestamp)
+        returns (BalanceDelta) {
+            fail();
+        } catch (bytes memory reason) {
+            assertTrue(
+                _revertContains(reason, OrbitalHook.SwapBeyondZeroPrice.selector), "must fail with SwapBeyondZeroPrice"
+            );
+        }
+        assertGt(outBelow, 0, "the in-range trade paid out");
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Multi-LP fee distribution
     // ─────────────────────────────────────────────────────────────
@@ -1109,14 +1498,16 @@ contract OrbitalHookTest is BaseTest {
         vm.stopPrank();
 
         uint256 r = 100 ether;
-        uint256 kWad = (TickLib.kMin(r, 3) + TickLib.kMax(r, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
 
-        // Both LPs mint into the same tick.
-        hook.addLiquidity(kWad, r, maxA);
+        // Both LPs mint into the same band, so they share its one tick; each
+        // position collects its own part of that tick's fees, and equal radius
+        // must earn equally.
+        (uint256 tickA,) = hook.addLiquidity(FULL, r, maxA, block.timestamp);
         vm.prank(lpB);
-        hook.addLiquidity(kWad, r, maxA);
+        (uint256 tickB,) = hook.addLiquidity(FULL, r, maxA, block.timestamp);
+        assertEq(tickA, tickB, "same band, same tick");
 
         PoolKey memory key =
             PoolKey({currency0: c0, currency1: c1, fee: 0, tickSpacing: 1, hooks: IHooks(address(hook))});
@@ -1125,10 +1516,10 @@ contract OrbitalHookTest is BaseTest {
         // Drive a swap to generate fees.
         swapRouter.swapExactTokensForTokens(10 ether, 0, true, key, "", address(this), block.timestamp);
 
-        // Both LPs collect.
-        uint256[] memory feesA = hook.collect(0);
+        // Both LPs collect from their own tick.
+        uint256[] memory feesA = hook.collect(tickA);
         vm.prank(lpB);
-        uint256[] memory feesB = hook.collect(0);
+        uint256[] memory feesB = hook.collect(tickB);
 
         // Same liquidity → same fee on the input asset (within 1 wei of rounding).
         assertApproxEqAbs(feesA[0], feesB[0], 1, "asset0 fee split 50/50");
@@ -1141,11 +1532,10 @@ contract OrbitalHookTest is BaseTest {
     function test_pause_blocks_addLiquidity() public {
         hook.pause();
         uint256 rWad = 50 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
     }
 
     function test_pause_blocks_swap() public {
@@ -1157,15 +1547,14 @@ contract OrbitalHookTest is BaseTest {
 
     function test_pause_does_NOT_block_removeLiquidity() public {
         uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
 
         hook.pause();
         uint256[] memory minA = new uint256[](3);
         // Should NOT revert — LPs must always be able to exit.
-        hook.removeLiquidity(0, rWad, minA);
+        hook.removeLiquidity(MID, rWad, minA, block.timestamp);
     }
 
     function test_pause_does_NOT_block_collect() public {
@@ -1175,7 +1564,7 @@ contract OrbitalHookTest is BaseTest {
 
         hook.pause();
         // collect must still work while paused.
-        uint256[] memory fees = hook.collect(0);
+        uint256[] memory fees = hook.collect(FULL);
         assertGt(fees[0], 0, "fees collected during pause");
     }
 
@@ -1190,11 +1579,10 @@ contract OrbitalHookTest is BaseTest {
         hook.unpause();
 
         uint256 rWad = 50 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
         uint256[] memory maxA = new uint256[](3);
         maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
         // Should now succeed.
-        hook.addLiquidity(kWad, rWad, maxA);
+        hook.addLiquidity(MID, rWad, maxA, block.timestamp);
     }
 
     function test_ownership_twoStep_transfer() public {
@@ -1217,40 +1605,6 @@ contract OrbitalHookTest is BaseTest {
         // New owner can.
         vm.prank(newOwner);
         hook.pause();
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // addLiquidityViaPermit2
-    // ─────────────────────────────────────────────────────────────
-
-    function test_addLiquidityViaPermit2_works() public {
-        // Grant permit2 spending allowance to the hook for each registered asset.
-        for (uint8 i = 0; i < 3; ++i) {
-            Currency c = i == 0 ? c0 : (i == 1 ? c1 : c2);
-            permit2.approve(Currency.unwrap(c), address(hook), type(uint160).max, type(uint48).max);
-        }
-        // The MockERC20 was already approved to permit2 in deployToken().
-
-        uint256 rWad = 100 ether;
-        uint256 kWad = (TickLib.kMin(rWad, 3) + TickLib.kMax(rWad, 3)) / 2;
-        uint256[] memory maxA = new uint256[](3);
-        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-
-        // Revoke direct allowance so the only working path is permit2.
-        MockERC20(Currency.unwrap(c0)).approve(address(hook), 0);
-        MockERC20(Currency.unwrap(c1)).approve(address(hook), 0);
-        MockERC20(Currency.unwrap(c2)).approve(address(hook), 0);
-
-        (uint256 tickIdx,) = hook.addLiquidityViaPermit2(kWad, rWad, maxA);
-        assertEq(hook.balanceOf(address(this), tickIdx), rWad, "shares minted via permit2 path");
-    }
-
-    function test_addLiquidityViaPermit2_pause_blocks() public {
-        hook.pause();
-        uint256[] memory maxA = new uint256[](3);
-        maxA[0] = maxA[1] = maxA[2] = type(uint256).max;
-        vm.expectRevert(Pausable.EnforcedPause.selector);
-        hook.addLiquidityViaPermit2(1 ether, 1 ether, maxA);
     }
 
     // ─────────────────────────────────────────────────────────────
