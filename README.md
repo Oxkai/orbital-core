@@ -220,10 +220,11 @@ Every one of the six pairs quotes within 0.02 bps of that, because they share on
 
 Token addresses, v4 infra (PoolManager, router, V4Quoter), Hyperlane Mailboxes and the peer registry all live in [`orbitalHook/deployments.json`](orbitalHook/deployments.json).
 
-> **Asset index order differs per chain.** The hook sorts assets ascending by address, and addresses are unrelated across chains, so USDC is index 1 on Arbitrum, 1 on Robinhood, 2 on Ethereum, 0 on Base. Always resolve by symbol, never by index.
+> **Asset index order differs per chain.** The hook sorts assets ascending by address, and addresses are unrelated across chains, so USDC is index 1 on Arbitrum, 1 on Robinhood, 2 on Ethereum, 0 on Base and 0 on Monad. Always resolve by symbol, never by index.
 
 - Live app: <https://orbital-hook.vercel.app/>
-- Subgraph: one manifest, per-chain addresses in [`subgraph/networks.json`](subgraph/networks.json). The app reads pools, positions and quotes straight from the chain, and uses the index only for history.
+- Monad indexer: <https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql>, public, no key
+- Subgraph: one manifest for the other chains, per-chain addresses in [`subgraph/networks.json`](subgraph/networks.json). The app reads pools, positions and quotes straight from the chain, and uses an index only for history.
 
 ---
 
@@ -241,9 +242,13 @@ UHI/
 │   │   └── ReshapeLiquidity.s.sol      move a live pool onto the ladder in place
 │   ├── FEEDBACK.md                 Uniswap v4 developer feedback
 │   └── deployments.json            machine-readable address registry
-├── subgraph/               The Graph: one manifest, three networks
+├── envio/                  Envio HyperIndex: the Monad indexer, deployed
 │   ├── schema.graphql              Pool, Asset, Tick, Swap, TickCross, PoolSnapshot
-│   ├── src/mapping.ts              reproduces the engine's own crossing condition
+│   ├── src/EventHandlers.ts        reproduces the engine's own crossing condition
+│   └── src/effects.ts              cached contract reads, keyed by hook and block
+├── subgraph/               The Graph: one manifest, the other chains
+│   ├── schema.graphql              the same entities
+│   ├── src/mapping.ts              the same crossing condition, AssemblyScript
 │   └── networks.json               per-chain address + start block
 └── frontend/               Next.js app: swap, pools, positions, transactions
     ├── lib/crosschain.ts           pool registry, from deployments.json
@@ -358,9 +363,26 @@ cd orbitalHook && forge test          # 205 tests
 
 ## Indexing and monitoring
 
-The pools are indexed by [`subgraph/`](subgraph), which the app reads for its
-activity feed and 24h volume. Pools, positions, quotes and swaps all read
-straight from the chain, so the app works whether or not an index is live.
+The pools are indexed twice over: [`envio/`](envio) is an Envio HyperIndex
+indexer covering Monad, and [`subgraph/`](subgraph) is the Graph manifest for
+the other chains. Pools, positions, quotes and swaps all read straight from the
+chain, so the app works whether or not an index is live.
+
+The Monad indexer is deployed and public, no key:
+
+```
+https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql
+```
+
+```sh
+curl -s -X POST https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ Pool { swapCount volumeWad feesWad sumX rInt frozen } }"}'
+```
+
+Every figure it reports is derived independently of the one the hook holds, and
+the two match to the wei — see [`envio/README.md`](envio/README.md) for the
+comparison and how to re-run it.
 
 The point is not a dashboard. `TickCrossed` only fires *after* a depeg bound is hit,
 so as a warning it arrives too late. Every handler therefore also reads live `slot0`
