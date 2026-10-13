@@ -14,13 +14,14 @@ import {
 } from "@phosphor-icons/react";
 import {
   useAccount,
+  useConnect,
+  useConnectors,
   useSwitchChain,
   useWriteContract,
   useReadContract,
   useReadContracts,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { useWalletAuth } from "@/lib/hooks/useWalletAuth";
 import { type Address, type Hash, type Hex, formatUnits, parseUnits, maxUint256 } from "viem";
 import { color, typography } from "@/constants";
 import { ERC20_ABI, MOCK_ERC20_ABI, ROUTER_ABI, QUOTER_ABI } from "@/lib/contracts";
@@ -573,7 +574,8 @@ export function SwapWidget() {
   const resultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { address, isConnected, chainId: walletChainId } = useAccount();
-  const { signIn } = useWalletAuth();
+  const { connect } = useConnect();
+  const connectors = useConnectors();
   const { switchChain } = useSwitchChain();
   const { writeContract, isPending } = useWriteContract();
 
@@ -905,7 +907,8 @@ export function SwapWidget() {
 
   function handleBtn() {
     if (!isConnected) {
-      signIn();
+      const connector = connectors.find((c) => c.type === "injected") ?? connectors[0];
+      if (connector) connect({ connector });
       return;
     }
     if (blocked || quoteFailure) return;

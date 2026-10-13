@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useChainId, useSwitchChain } from "wagmi";
-import { useWalletAuth } from "@/lib/hooks/useWalletAuth";
+import { useAccount, useConnect, useConnectors, useDisconnect, useChainId, useSwitchChain } from "wagmi";
 import { CHAIN_IDS, PRIMARY_CHAIN_ID } from "@/lib/crosschain";
 import { color, typography } from "@/constants";
 import { List as Menu, X, MagnifyingGlass } from "@phosphor-icons/react";
@@ -30,7 +29,10 @@ function avatarGradient(addr: string) {
 
 export function AppNav() {
   const pathname = usePathname();
-  const { address, isConnected, isPending, signIn, signOut } = useWalletAuth();
+  const { address, isConnected } = useAccount();
+  const { connect, isPending }   = useConnect();
+  const connectors               = useConnectors();
+  const { disconnect }           = useDisconnect();
   const chainId                  = useChainId();
   const { switchChain }          = useSwitchChain();
   const [isMounted, setIsMounted] = useState(false);
@@ -154,7 +156,7 @@ export function AppNav() {
           )}
           {showConnectedWallet ? (
             <button
-              onClick={() => signOut()}
+              onClick={() => disconnect()}
               className="flex items-center gap-2 h-9 px-3 hover:bg-(--color-surface-3) transition-colors"
               style={{
                 color: color.textPrimary,
@@ -174,7 +176,11 @@ export function AppNav() {
             </button>
           ) : (
             <button
-              onClick={() => signIn()}
+              onClick={() => {
+                const connector =
+                  connectors.find(c => c.type === "injected") ?? connectors[0];
+                if (connector) connect({ connector });
+              }}
               disabled={isPending}
               className="flex items-center h-9 px-4"
               style={{
