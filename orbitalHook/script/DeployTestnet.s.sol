@@ -52,11 +52,9 @@ contract DeployTestnetScript is Script {
         if (pm == address(0)) pm = AddressConstants.getPoolManagerAddress(block.chainid);
         address rt = vm.envOr("V4_ROUTER", address(0));
         if (rt == address(0)) rt = AddressConstants.getV4SwapRouterAddress(block.chainid);
-        address permit2 = OrbitalDeploy.PERMIT2;
 
         require(pm.code.length > 0, "no PoolManager on this chain");
         require(rt.code.length > 0, "no V4Router on this chain");
-        require(permit2.code.length > 0, "no Permit2 on this chain");
         require(
             vm.envOr("CREATE2_DEPLOYER", OrbitalDeploy.CREATE2_FACTORY).code.length > 0,
             "no CREATE2 deployer on this chain"

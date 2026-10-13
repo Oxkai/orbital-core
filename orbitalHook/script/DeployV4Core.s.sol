@@ -4,6 +4,8 @@ pragma solidity ^0.8.26;
 import {Script, console2} from "forge-std/Script.sol";
 import {V4PoolManagerDeployer} from "hookmate/artifacts/V4PoolManager.sol";
 import {V4RouterDeployer} from "hookmate/artifacts/V4Router.sol";
+import {Permit2Deployer} from "hookmate/artifacts/Permit2.sol";
+import {DeployHelper} from "hookmate/artifacts/DeployHelper.sol";
 import {OrbitalDeploy} from "./lib/OrbitalDeploy.sol";
 
 /// @notice Stands up Uniswap v4 on a chain that has no canonical deployment.
@@ -17,9 +19,9 @@ import {OrbitalDeploy} from "./lib/OrbitalDeploy.sol";
 ///         builds on 0.8.30, so the sources cannot compile side by side here.
 ///         The artifacts are the same bytecode Uniswap deploys canonically.
 ///
-///         Permit2 is assumed already present at its deterministic address; it
-///         is on every chain this has been pointed at so far, and the router
-///         constructor takes it.
+///         Permit2 is deployed here too where the chain has none, because the
+///         router's constructor takes an address for it. The hook itself does
+///         not use Permit2, so a non-canonical one costs nothing.
 ///
 ///         forge script script/DeployV4Core.s.sol --rpc-url <rpc> \
 ///             --broadcast --slow --private-key $PRIVATE_KEY
@@ -29,11 +31,24 @@ import {OrbitalDeploy} from "./lib/OrbitalDeploy.sol";
 contract DeployV4CoreScript is Script {
     function run() external {
         address permit2 = OrbitalDeploy.PERMIT2;
-        require(permit2.code.length > 0, "no Permit2 on this chain");
+
+        // hookmate's deployers use CREATE2 with a zero salt, so the same artifact
+        // lands on the same address on every chain. A chain that already carries
+        // one from an earlier deployment collides; CORE_SALT gives a fresh set.
+        bytes32 salt = vm.envOr("CORE_SALT", bytes32(0));
 
         vm.startBroadcast();
-        address pm = V4PoolManagerDeployer.deploy(msg.sender);
-        address router = V4RouterDeployer.deploy(pm, permit2);
+        // A chain with no canonical Permit2 gets one of its own. Nothing in the
+        // hook uses it; only the router's constructor asks for an address.
+        if (permit2.code.length == 0) {
+            permit2 = DeployHelper.deploy(Permit2Deployer.initcode(), salt);
+        }
+        address pm = DeployHelper.deploy(
+            abi.encodePacked(V4PoolManagerDeployer.initcode(), abi.encode(msg.sender)), salt
+        );
+        address router = DeployHelper.deploy(
+            abi.encodePacked(V4RouterDeployer.initcode(), abi.encode(pm, permit2)), salt
+        );
         vm.stopBroadcast();
 
         require(pm.code.length > 0, "PoolManager deploy produced no code");
@@ -42,6 +57,7 @@ contract DeployV4CoreScript is Script {
         console2.log("chainId:     ", block.chainid);
         console2.log("PoolManager: ", pm);
         console2.log("V4Router:    ", router);
+        console2.log("Permit2:     ", permit2);
         console2.log("");
         console2.log("export V4_POOL_MANAGER=%s", pm);
         console2.log("export V4_ROUTER=%s", router);
