@@ -69,7 +69,7 @@ no v3 market at all.
 
 ## Status
 
-v1, working end-to-end (205 tests) and live on Robinhood Chain testnet, Arbitrum Sepolia, Base Sepolia and Ethereum Sepolia.
+v1, working end-to-end (205 tests) and live on Robinhood Chain testnet, Monad Testnet, Arbitrum Sepolia, Base Sepolia and Ethereum Sepolia.
 
 **Engine**
 - [x] Asset registry, N tokens per pool, sorted, unique, immutable
@@ -342,6 +342,21 @@ Uniswap v4 and the V4Router are already deployed here, so the hook plugs into th
 | DAI (mock, 18dp) | `0x45dc287a307eccf7426cb2377ee2865457592fae` |
 | FRAX (mock, 18dp) | `0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4` |
 
+### Monad Testnet `10143`
+
+No canonical Uniswap v4 here, so the PoolManager and router are ours, deployed by `DeployV4Core.s.sol` under a non-zero `CORE_SALT`.
+
+| Contract | Address |
+|---|---|
+| OrbitalHook | [`0x2Db3289884D575A7b49374F28d738DBF2dc42a88`](https://testnet.monadscan.com/address/0x2Db3289884D575A7b49374F28d738DBF2dc42a88) |
+| PoolManager (v4) | `0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7` |
+| V4Quoter | `0x2f7A2DC7d74645A31CABb5466219CCAB70913377` |
+| V4Router | `0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a` |
+| USDC (mock, 6dp) | `0x0a29619e8580d90b14200a734faad4677e9d1645` |
+| USDT (mock, 6dp) | `0x45dc287a307eccf7426cb2377ee2865457592fae` |
+| FRAX (mock, 18dp) | `0x871290c7a788395f1ce5f7cdd69917696e0c352a` |
+| DAI (mock, 18dp) | `0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4` |
+
 ### Arbitrum Sepolia `421614`
 
 Uniswap v4 is canonically deployed here, so the hook plugs into the official `PoolManager`.
@@ -391,12 +406,13 @@ An earlier set of deployments on these chains, plus Unichain Sepolia, is retired
 ### Live state
 
 Each pool holds its $5M ladder across 8 seeded ticks, all interior (`kBound = 0`), with random retail
-swap flow run on top by [`SimulateSwaps.s.sol`](script/SimulateSwaps.s.sol) interleaved across the four
+swap flow run on top by [`SimulateSwaps.s.sol`](script/SimulateSwaps.s.sol) interleaved across the five
 chains by [`mixed-swaps.sh`](script/mixed-swaps.sh), each trade capped at $5,000:
 
 | Pool | TVL | Seeded ticks | All interior |
 |---|---|---|---|
 | Robinhood | ~$5.00M | 8 | yes |
+| Monad | ~$5.00M | 8 | yes |
 | Arbitrum | ~$5.00M | 8 | yes |
 | Base | ~$5.00M | 8 | yes |
 | Ethereum | ~$5.00M | 8 | yes |

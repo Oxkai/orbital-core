@@ -4,7 +4,7 @@
 
 **One pool for every stablecoin.** A Uniswap v4 hook that replaces constant-product math with the Orbital sphere/torus curve, so USDC, USDT, DAI and FRAX all trade out of a single shared reserve book instead of six shallow pairs.
 
-[**Live app**](https://orbital-hook.vercel.app/) · Robinhood Chain · Arbitrum Sepolia · Base Sepolia · Ethereum Sepolia · 205 tests
+[**Live app**](https://orbital-hook.vercel.app/) · Robinhood Chain · Monad · Arbitrum Sepolia · Base Sepolia · Ethereum Sepolia · 205 tests
 
 ---
 
@@ -198,16 +198,17 @@ Funds are never stuck: if an order is not settled, the user reclaims the escrow 
 
 ## Deployments
 
-Four live pools, one per EVM chain with a Crypto World's Fair prize track: Robinhood Chain testnet (primary), Arbitrum Sepolia, Base Sepolia and Ethereum Sepolia. Each chain is a separate book with its own reserves.
+Five live pools, one per EVM chain we target: Robinhood Chain testnet (primary), Monad Testnet, Arbitrum Sepolia, Base Sepolia and Ethereum Sepolia. Each chain is a separate book with its own reserves.
 
 | Chain | Pool | Hook |
 |---|---|---|
 | **Robinhood Chain testnet** `46630` | USDC · USDT · DAI · FRAX | [`0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88`](https://explorer.testnet.chain.robinhood.com/address/0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88) |
+| Monad Testnet `10143` | USDC · USDT · DAI · FRAX | [`0x2Db3289884D575A7b49374F28d738DBF2dc42a88`](https://testnet.monadscan.com/address/0x2Db3289884D575A7b49374F28d738DBF2dc42a88) |
 | Arbitrum Sepolia `421614` | USDC · USDT · DAI · FRAX | [`0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88`](https://sepolia.arbiscan.io/address/0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88) |
 | Base Sepolia `84532` | USDC · USDT · DAI · FRAX | [`0xa1685261278e44C12921a0f213daDfBF9Beb6A88`](https://sepolia.basescan.org/address/0xa1685261278e44C12921a0f213daDfBF9Beb6A88) |
 | Ethereum Sepolia `11155111` | USDC · USDT · DAI · FRAX | [`0xd92022CB51f49D61261321836A7a7b2e1A332a88`](https://sepolia.etherscan.io/address/0xd92022CB51f49D61261321836A7a7b2e1A332a88) |
 
-Each pool uses a realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp) and is seeded with $5M of real capital on an eight-tier ladder: seven concentrated bands plus a small full-range backstop. The ladder's shape is not invented — it mirrors where LPs in the live Uniswap v3 USDC/USDT0 0.01% pool on Arbitrum actually place their capital, read tick by tick on-chain, so about two thirds of it sits within 5 bps of $1. Random retail swap flow runs on top, interleaved across the four chains, with each trade capped at $5,000.
+Each pool uses a realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp) and is seeded with $5M of real capital on an eight-tier ladder: seven concentrated bands plus a small full-range backstop. The ladder's shape is not invented — it mirrors where LPs in the live Uniswap v3 USDC/USDT0 0.01% pool on Arbitrum actually place their capital, read tick by tick on-chain, so about two thirds of it sits within 5 bps of $1. Random retail swap flow runs on top, interleaved across the five chains, with each trade capped at $5,000.
 
 Quoted on the live $5M pool, all-in including the 1 bp fee:
 
