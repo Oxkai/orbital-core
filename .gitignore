@@ -3,11 +3,20 @@
 .idea/
 *.swp
 
-# Personal planning / scratch notes — not for the repo
+# macOS Finder duplicates ("name copy.ext", "name copy 2.ext")
+* copy.*
+* copy [0-9]*.*
+
+# Personal planning / scratch notes and hackathon write-ups, not for the repo
 todo.md
-req.md
 submission.md
-other
+other/
+proposal/
+/DESCRIPTION.md
+/HACKATHON.md
+
+# Local tooling config
+.claude/
 
 # Env / secrets
 .env
