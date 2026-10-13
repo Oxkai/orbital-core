@@ -197,7 +197,7 @@ export function Footer() {
           >
             Research implementation of the Paradigm Orbital paper.
             <br />
-            Deployed on Monad Testnet — not production.
+            Deployed on Ethereum Sepolia, Base Sepolia, Arbitrum Sepolia and Robinhood Chain testnet. Not production.
           </p>
           <p
             style={{
@@ -310,7 +310,7 @@ export function Footer() {
         }}
       >
         <span>
-          MONAD TESTNET · CHAIN ID 10143 · NOT AUDITED · NOT FINANCIAL ADVICE
+          ARBITRUM SEPOLIA · CHAIN ID 421614 · NOT AUDITED · NOT FINANCIAL ADVICE
         </span>
         <span>© 2026 ORBITAL</span>
       </div>

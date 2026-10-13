@@ -1,39 +1,36 @@
 import { color, colors, typography } from "@/constants";
 import { SectionLabel } from "./SectionLabel";
-import {
-  HOOK_ADDRESS, POOL_MANAGER, SWAP_ROUTER, QUOTER_ADDRESS,
-  TOKEN_ADDRESSES,
-} from "@/lib/contracts";
-import { explorerAddressUrl } from "@/lib/wagmi";
+import { CHAIN_IDS, DEPLOYMENTS, PRIMARY_CHAIN_ID, assetsByIndex, explorerAddress } from "@/lib/crosschain";
 
 type Contract = { name: string; address: string };
+
+/// The primary deployment (`PRIMARY_CHAIN_ID`), on canonical Uniswap v4, read from
+/// the same registry the app uses.
+const CHAIN_ID = PRIMARY_CHAIN_ID;
+const DEP = DEPLOYMENTS[CHAIN_ID];
 
 const GROUPS: { kind: string; label: string; items: Contract[] }[] = [
   {
     kind: "CORE",
     label: "Core protocol",
     items: [
-      { name: "OrbitalHook (v4)",      address: HOOK_ADDRESS },
-      { name: "PoolManager (v4)",      address: POOL_MANAGER },
+      { name: "OrbitalHook (v4)", address: DEP.orbitalHook },
+      { name: "PoolManager (v4)", address: DEP.poolManager },
     ],
   },
   {
     kind: "PERIPHERY",
     label: "Periphery",
     items: [
-      { name: "SwapRouter", address: SWAP_ROUTER    },
-      { name: "Quoter",     address: QUOTER_ADDRESS },
+      { name: "V4Router", address: DEP.swapRouter },
+      { name: "V4Quoter", address: DEP.quoter },
+      ...(DEP.intentSettler ? [{ name: "IntentSettler", address: DEP.intentSettler }] : []),
     ],
   },
   {
     kind: "TEST TOKENS",
-    label: "Test tokens (18-dec)",
-    items: [
-      { name: "USDC", address: TOKEN_ADDRESSES.USDC },
-      { name: "USDT", address: TOKEN_ADDRESSES.USDT },
-      { name: "DAI",  address: TOKEN_ADDRESSES.DAI },
-      { name: "FRAX", address: TOKEN_ADDRESSES.FRAX },
-    ],
+    label: "Test tokens",
+    items: assetsByIndex(CHAIN_ID).map((a) => ({ name: `${a.symbol} (${a.decimals}dp)`, address: a.address })),
   },
 ];
 
@@ -66,7 +63,7 @@ function GroupHeader({ code, label, count }: { code: string; label: string; coun
 function Row({ c, index }: { c: Contract; index: string }) {
   return (
     <a
-      href={explorerAddressUrl(c.address)}
+      href={explorerAddress(CHAIN_ID, c.address)}
       target="_blank"
       rel="noopener noreferrer"
       className="group grid grid-cols-12 items-center gap-5 px-5 py-4 border-b border-dashed transition-colors hover:bg-white/[0.03]"
@@ -123,7 +120,7 @@ function Row({ c, index }: { c: Contract; index: string }) {
             className="inline-block w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: colors.green.hex }}
           />
-          VERIFIED
+          LIVE
         </span>
         <span
           className="transition-transform group-hover:translate-x-0.5"
@@ -157,7 +154,7 @@ export function Deployed() {
               color: color.textPrimary,
             }}
           >
-            Deployed & verified
+            Deployed on {DEP.short}
           </h2>
         </div>
 
@@ -170,8 +167,8 @@ export function Deployed() {
             color: color.textMuted,
           }}
         >
-          <span className="col-span-12 md:col-span-6">NETWORK / MONAD TESTNET</span>
-          <span className="col-span-12 md:col-span-6 md:justify-self-end">CHAIN ID / 10143</span>
+          <span className="col-span-12 md:col-span-6">NETWORK / {DEP.name.toUpperCase()} · CANONICAL UNISWAP V4</span>
+          <span className="col-span-12 md:col-span-6 md:justify-self-end">CHAIN ID / {CHAIN_ID}</span>
         </div>
 
         <div
@@ -187,6 +184,13 @@ export function Deployed() {
               })}
             </div>
           ))}
+        </div>
+
+        <div
+          className="mt-6"
+          style={{ fontFamily: MONO, fontSize: "11px", letterSpacing: "0.06em", color: color.textMuted }}
+        >
+          ALSO LIVE / {CHAIN_IDS.filter((id) => id !== CHAIN_ID).map((id) => DEPLOYMENTS[id].name.toUpperCase()).join(" · ")}
         </div>
       </div>
     </section>
