@@ -48,9 +48,10 @@ export interface CrossChainDeployment {
 
 export const ARBITRUM_SEPOLIA_ID = 421614;
 export const ROBINHOOD_TESTNET_ID = 46630;
-export const ETHEREUM_SEPOLIA_ID = 11155111;
 export const BASE_SEPOLIA_ID = 84532;
-export const MONAD_TESTNET_ID = 10143;
+
+// Aurora: the EVM on NEAR. Not in viem's chain list.
+export const AURORA_TESTNET_ID = 1313161555;
 
 export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
   // Generated from orbitalHook/deployments.json - keep the two in step.
@@ -63,9 +64,8 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
     poolManager: "0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317",
     swapRouter: "0xcD8D7e10A7aA794C389d56A07d85d63E28780220",
     quoter: "0xF0DB224d356dFF5cFF51D3d7295391bB2c9265FE",
-    // Redeployed 12 Oct 2026; no settler on the new hook, so same-chain only.
-    crossChainNote: "This deployment is same-chain only",
     deployBlock: 318516459n,
+    intentSettler: "0xd98025353ABdd8997C6DF5F8eE59cD1e601A7627",
     assets: {
       FRAX:  { symbol: "FRAX", address: "0x15aabbc1c571147f05b5f9d37690ca6843dee044", decimals: 18, index: 0 },
       USDC:  { symbol: "USDC", address: "0x36b5bc5998f1aae8754697e60314b8c5b6d435ff", decimals: 6 , index: 1 },
@@ -92,24 +92,6 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
       FRAX:  { symbol: "FRAX", address: "0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4", decimals: 18, index: 3 },
     },
   },
-  [ETHEREUM_SEPOLIA_ID]: {
-    chainId: ETHEREUM_SEPOLIA_ID,
-    name: "Ethereum Sepolia",
-    short: "Ethereum",
-    explorer: "https://sepolia.etherscan.io",
-    orbitalHook: "0xd92022CB51f49D61261321836A7a7b2e1A332a88",
-    poolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
-    swapRouter: "0xf13D190e9117920c703d79B5F33732e10049b115",
-    quoter: "0x58D48990408b4ba45dE08679de3921EbD6fA71b7",
-    crossChainNote: "This deployment is same-chain only",
-    deployBlock: 11901133n,
-    assets: {
-      FRAX:  { symbol: "FRAX", address: "0x51fb24e0e855e8709a017f3acc69ec6aa42cf8d6", decimals: 18, index: 0 },
-      USDT:  { symbol: "USDT", address: "0x7cd4e073fd118f2f1197c1c1aa450dd410ebdeef", decimals: 6 , index: 1 },
-      USDC:  { symbol: "USDC", address: "0xd289f244ac5fb4e372bea5f92f07fa6960ca4307", decimals: 6 , index: 2 },
-      DAI:   { symbol: "DAI", address: "0xf2dc831ee8e1400ce58f8c27427025cb91ec64cd", decimals: 18, index: 3 },
-    },
-  },
   [BASE_SEPOLIA_ID]: {
     chainId: BASE_SEPOLIA_ID,
     name: "Base Sepolia",
@@ -119,8 +101,8 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
     poolManager: "0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408",
     swapRouter: "0x71cD4Ea054F9Cb3D3BF6251A00673303411A7DD9",
     quoter: "0xE584726a93f37177219F72b4BA76DE7fFA851664",
-    crossChainNote: "This deployment is same-chain only",
     deployBlock: 48033167n,
+    intentSettler: "0x2D27158904Db6ECf6241c21449132C8582c2EF8E",
     assets: {
       USDC:  { symbol: "USDC", address: "0x2822852629b4ed8420da072cb40318cf1318537f", decimals: 6 , index: 0 },
       USDT:  { symbol: "USDT", address: "0x8119fc1a13e2a69735de1c9a38d6ffa0c94e986d", decimals: 6 , index: 1 },
@@ -128,22 +110,22 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
       FRAX:  { symbol: "FRAX", address: "0xe6de3e3be032e391786754c824c5800ca010c54f", decimals: 18, index: 3 },
     },
   },
-  [MONAD_TESTNET_ID]: {
-    chainId: MONAD_TESTNET_ID,
-    name: "Monad Testnet",
-    short: "Monad",
-    explorer: "https://testnet.monadscan.com",
-    orbitalHook: "0x2Db3289884D575A7b49374F28d738DBF2dc42a88",
-    poolManager: "0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7",
-    swapRouter: "0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a",
-    quoter: "0x2f7A2DC7d74645A31CABb5466219CCAB70913377",
-    crossChainNote: "This deployment is same-chain only",
-    deployBlock: 70679352n,
+  [AURORA_TESTNET_ID]: {
+    chainId: AURORA_TESTNET_ID,
+    name: "Aurora Testnet",
+    short: "Aurora",
+    explorer: "https://explorer.testnet.aurora.dev",
+    orbitalHook: "0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88",
+    poolManager: "0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7",
+    swapRouter: "0x0E789f5e5047Ae2a6fcf571a14483CF695f55737",
+    quoter: "0x1D49545CccDA551d5f5b2Ec95Fc53C34432016cF",
+    deployBlock: 276681219n,
+    intentSettler: "0x58D48990408b4ba45dE08679de3921EbD6fA71b7",
     assets: {
-      USDC:  { symbol: "USDC", address: "0x0a29619e8580d90b14200a734faad4677e9d1645", decimals: 6 , index: 0 },
-      USDT:  { symbol: "USDT", address: "0x45dc287a307eccf7426cb2377ee2865457592fae", decimals: 6 , index: 1 },
-      FRAX:  { symbol: "FRAX", address: "0x871290c7a788395f1ce5f7cdd69917696e0c352a", decimals: 18, index: 2 },
-      DAI:   { symbol: "DAI", address: "0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4", decimals: 18, index: 3 },
+      DAI:   { symbol: "DAI", address: "0x18c315d33339fd9604d80825ae770b5726a8f361", decimals: 18, index: 0 },
+      FRAX:  { symbol: "FRAX", address: "0x387e386a0a9cad757479bca19e84a7787d4c4c1e", decimals: 18, index: 1 },
+      USDC:  { symbol: "USDC", address: "0x602e7b42515d3e93a04e176c09a24eaf9f617c88", decimals: 6 , index: 2 },
+      USDT:  { symbol: "USDT", address: "0xe574c92e61579b3b77f5491a0c02c57157c915c1", decimals: 6 , index: 3 },
     },
   },
 };
@@ -152,7 +134,7 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
 /// and the swap widget's opening pair. Robinhood Chain is the home of this
 /// hook; the other four carry the same deployment, and between them the
 /// cross-chain routes. One constant to move if that changes.
-export const PRIMARY_CHAIN_ID = ROBINHOOD_TESTNET_ID;
+export const PRIMARY_CHAIN_ID = AURORA_TESTNET_ID;
 
 /// Chain the swap widget opens on.
 ///
@@ -163,17 +145,16 @@ export const PRIMARY_CHAIN_ID = ROBINHOOD_TESTNET_ID;
 /// decisions, so they get different constants.
 ///
 /// The opening pair is same-chain, so the widget never opens on a route that
-/// depends on a cross-chain settlement — which matters more here, since Monad
+/// depends on a cross-chain settlement — which matters more here, since Aurora
 /// has no Hyperlane mailbox and so no cross-chain settler at all.
-export const DEFAULT_SWAP_CHAIN_ID = MONAD_TESTNET_ID;
+export const DEFAULT_SWAP_CHAIN_ID = AURORA_TESTNET_ID;
 
 /// Display order in the token dropdown, primary chain first.
 export const CHAIN_IDS = [
+  AURORA_TESTNET_ID,
   ROBINHOOD_TESTNET_ID,
-  MONAD_TESTNET_ID,
-  ARBITRUM_SEPOLIA_ID,
   BASE_SEPOLIA_ID,
-  ETHEREUM_SEPOLIA_ID,
+  ARBITRUM_SEPOLIA_ID,
 ] as const;
 
 /// Every chain carries the same four stables, so a same-chain route always exists.
