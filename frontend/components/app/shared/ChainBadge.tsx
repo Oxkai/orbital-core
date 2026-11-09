@@ -2,9 +2,8 @@ import type { CSSProperties } from "react";
 import {
   ARBITRUM_SEPOLIA_ID,
   ROBINHOOD_TESTNET_ID,
-  ETHEREUM_SEPOLIA_ID,
   BASE_SEPOLIA_ID,
-  MONAD_TESTNET_ID,
+  AURORA_TESTNET_ID,
 } from "@/lib/crosschain";
 
 /** Chain badge, drawn as ONE svg: rounded-square plate plus the network glyph,
@@ -44,13 +43,6 @@ const CHAIN_ART: Record<number, ChainArt> = {
       "M11.36 7.001H9.407a.36.36 0 0 0-.2.065.34.34 0 0 0-.124.162L4.918 18.3l2.008 1.128 4.595-12.195a.17.17 0 0 0-.021-.158.19.19 0 0 0-.148-.075zm3.402 0h-1.944a.36.36 0 0 0-.198.062.34.34 0 0 0-.126.16l-4.77 12.634 2.015 1.128 5.185-13.756a.16.16 0 0 0 0-.119.17.17 0 0 0-.08-.09.2.2 0 0 0-.082-.019",
     ],
   },
-  [ETHEREUM_SEPOLIA_ID]: {
-    plate: "#627EEA",
-    glyph: [
-      // Ethereum diamond, from Simple Icons (CC0), native 24x24 box.
-      "M11.944 17.97 4.58 13.62 11.943 24l7.37-10.38-7.372 4.35h.003zM12.056 0 4.69 12.223l7.365 4.354 7.365-4.35L12.056 0z",
-    ],
-  },
   [BASE_SEPOLIA_ID]: {
     plate: "#0052FF",
     glyph: [
@@ -58,11 +50,12 @@ const CHAIN_ART: Record<number, ChainArt> = {
       "M11.9 23.9C18.5 23.9 23.9 18.5 23.9 11.9S18.5 0 11.9 0C5.6 0 .5 4.8 0 10.9h15.9v2H0c.5 6.2 5.6 11 11.9 11z",
     ],
   },
-  [MONAD_TESTNET_ID]: {
-    plate: "#836EF9",
+  [AURORA_TESTNET_ID]: {
+    plate: "#70D44B",
+    ink: "#0A0A0A",
     glyph: [
-      // Monad mark, renormalised into this 24x24 viewBox.
-      "M12 2.4c-2.65 0-9.6 6.95-9.6 9.6s6.95 9.6 9.6 9.6 9.6-6.95 9.6-9.6S14.65 2.4 12 2.4m-1.3 14.73c-1.03-.28-3.83-5.13-3.55-6.16.28-1.03 5.13-3.83 6.16-3.55 1.03.28 3.83 5.13 3.55 6.16-.28 1.03-5.13 3.83-6.16 3.55",
+      // Aurora mark: a rounded triangle, renormalised into this 24x24 viewBox.
+      "M12 3.6c.74 0 1.42.4 1.78 1.05l6.9 12.5c.35.63.34 1.4-.03 2.02-.37.62-1.04 1-1.76 1H5.11c-.72 0-1.39-.38-1.76-1a2.03 2.03 0 0 1-.03-2.02l6.9-12.5A2.03 2.03 0 0 1 12 3.6m0 3.3-5.2 9.42h10.4z",
     ],
   },
   [ROBINHOOD_TESTNET_ID]: {

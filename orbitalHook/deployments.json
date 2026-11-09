@@ -1,36 +1,38 @@
 {
   "_comment": "Live Orbital deployments, redeployed 2026-10-12 for the Crypto World's Fair hackathon: one pool per prize-track EVM chain. Asset INDEX ORDER DIFFERS PER CHAIN (the hook sorts by address; addresses are unrelated across chains) - resolve by symbol, never index, and decode event asset indices via that chain's order. Realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp). CONCENTRATED LIQUIDITY: a tick's reserves below its band's floor (xMin) are virtual and never deposited; `reserves(i)` is the engine's virtual reserve, tokens held are `reserves(i) - virtualReserve()`. Seeded with script/lib/TierLadder.sol in REAL capital: ~$5M TVL per pool over seven concentrated bands plus a full-range backstop. These hooks are same-chain only (no settler).",
-  "421614": {
-    "name": "Arbitrum Sepolia",
-    "short": "Arbitrum",
-    "rpc": "https://sepolia-rollup.arbitrum.io/rpc",
-    "explorer": "https://sepolia.arbiscan.io",
-    "poolManager": "0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317",
-    "v4Router": "0xcD8D7e10A7aA794C389d56A07d85d63E28780220",
-    "quoter": "0xF0DB224d356dFF5cFF51D3d7295391bB2c9265FE",
-    "orbitalHook": "0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88",
-    "deployBlock": 318516459,
-    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "1313161555": {
+    "name": "Aurora Testnet",
+    "short": "Aurora",
+    "rpc": "https://testnet.aurora.dev",
+    "explorer": "https://explorer.testnet.aurora.dev",
+    "poolManager": "0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7",
+    "v4Router": "0x0E789f5e5047Ae2a6fcf571a14483CF695f55737",
+    "quoter": "0x1D49545CccDA551d5f5b2Ec95Fc53C34432016cF",
+    "orbitalHook": "0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88",
+    "deployBlock": 276681219,
+    "permit2": "0x3191Fc1E303EF4e12a7DE5f5d2e8d53A0660c5b9",
+    "intentSettler": "0x58D48990408b4ba45dE08679de3921EbD6fA71b7",
+    "hyperlaneMailbox": "0x04438ef7622f5412f82915F59caD4f704C61eA48",
     "assets": {
-      "FRAX": {
-        "address": "0x15aabbc1c571147f05b5f9d37690ca6843dee044",
+      "DAI": {
+        "address": "0x18c315d33339fd9604d80825ae770b5726a8f361",
         "index": 0,
         "decimals": 18
       },
-      "USDC": {
-        "address": "0x36b5bc5998f1aae8754697e60314b8c5b6d435ff",
+      "FRAX": {
+        "address": "0x387e386a0a9cad757479bca19e84a7787d4c4c1e",
         "index": 1,
-        "decimals": 6
+        "decimals": 18
       },
-      "USDT": {
-        "address": "0x47936d9fa0bf4eee6f44ff6308cfe59a3f80913d",
+      "USDC": {
+        "address": "0x602e7b42515d3e93a04e176c09a24eaf9f617c88",
         "index": 2,
         "decimals": 6
       },
-      "DAI": {
-        "address": "0xc4fdb067adff5bc0d10886598ddc00fb432f9794",
+      "USDT": {
+        "address": "0xe574c92e61579b3b77f5491a0c02c57157c915c1",
         "index": 3,
-        "decimals": 18
+        "decimals": 6
       }
     }
   },
@@ -68,40 +70,6 @@
       }
     }
   },
-  "11155111": {
-    "short": "Ethereum",
-    "name": "Ethereum Sepolia",
-    "rpc": "https://sepolia.drpc.org",
-    "explorer": "https://sepolia.etherscan.io",
-    "poolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
-    "v4Router": "0xf13D190e9117920c703d79B5F33732e10049b115",
-    "quoter": "0x58D48990408b4ba45dE08679de3921EbD6fA71b7",
-    "orbitalHook": "0xd92022CB51f49D61261321836A7a7b2e1A332a88",
-    "deployBlock": 11901133,
-    "assets": {
-      "FRAX": {
-        "address": "0x51fb24e0e855e8709a017f3acc69ec6aa42cf8d6",
-        "index": 0,
-        "decimals": 18
-      },
-      "USDT": {
-        "address": "0x7cd4e073fd118f2f1197c1c1aa450dd410ebdeef",
-        "index": 1,
-        "decimals": 6
-      },
-      "USDC": {
-        "address": "0xd289f244ac5fb4e372bea5f92f07fa6960ca4307",
-        "index": 2,
-        "decimals": 6
-      },
-      "DAI": {
-        "address": "0xf2dc831ee8e1400ce58f8c27427025cb91ec64cd",
-        "index": 3,
-        "decimals": 18
-      }
-    },
-    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
-  },
   "84532": {
     "short": "Base",
     "name": "Base Sepolia",
@@ -112,6 +80,8 @@
     "quoter": "0xE584726a93f37177219F72b4BA76DE7fFA851664",
     "orbitalHook": "0xa1685261278e44C12921a0f213daDfBF9Beb6A88",
     "deployBlock": 48033167,
+    "intentSettler": "0x2D27158904Db6ECf6241c21449132C8582c2EF8E",
+    "hyperlaneMailbox": "0x6966b0E55883d49BFB24539356a2f8A673E02039",
     "assets": {
       "USDC": {
         "address": "0x2822852629b4ed8420da072cb40318cf1318537f",
@@ -136,35 +106,37 @@
     },
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
   },
-  "10143": {
-    "name": "Monad Testnet",
-    "short": "Monad",
-    "rpc": "https://testnet-rpc.monad.xyz",
-    "explorer": "https://testnet.monadscan.com",
-    "poolManager": "0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7",
-    "v4Router": "0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a",
-    "quoter": "0x2f7A2DC7d74645A31CABb5466219CCAB70913377",
-    "orbitalHook": "0x2Db3289884D575A7b49374F28d738DBF2dc42a88",
-    "deployBlock": 70679352,
+  "421614": {
+    "name": "Arbitrum Sepolia",
+    "short": "Arbitrum",
+    "rpc": "https://sepolia-rollup.arbitrum.io/rpc",
+    "explorer": "https://sepolia.arbiscan.io",
+    "poolManager": "0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317",
+    "v4Router": "0xcD8D7e10A7aA794C389d56A07d85d63E28780220",
+    "quoter": "0xF0DB224d356dFF5cFF51D3d7295391bB2c9265FE",
+    "orbitalHook": "0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88",
+    "deployBlock": 318516459,
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "intentSettler": "0xd98025353ABdd8997C6DF5F8eE59cD1e601A7627",
+    "hyperlaneMailbox": "0x598facE78a4302f11E3de0bee1894Da0b2Cb71F8",
     "assets": {
-      "USDC": {
-        "address": "0x0a29619e8580d90b14200a734faad4677e9d1645",
+      "FRAX": {
+        "address": "0x15aabbc1c571147f05b5f9d37690ca6843dee044",
         "index": 0,
-        "decimals": 6
+        "decimals": 18
       },
-      "USDT": {
-        "address": "0x45dc287a307eccf7426cb2377ee2865457592fae",
+      "USDC": {
+        "address": "0x36b5bc5998f1aae8754697e60314b8c5b6d435ff",
         "index": 1,
         "decimals": 6
       },
-      "FRAX": {
-        "address": "0x871290c7a788395f1ce5f7cdd69917696e0c352a",
+      "USDT": {
+        "address": "0x47936d9fa0bf4eee6f44ff6308cfe59a3f80913d",
         "index": 2,
-        "decimals": 18
+        "decimals": 6
       },
       "DAI": {
-        "address": "0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4",
+        "address": "0xc4fdb067adff5bc0d10886598ddc00fb432f9794",
         "index": 3,
         "decimals": 18
       }
