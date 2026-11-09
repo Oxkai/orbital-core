@@ -10,6 +10,7 @@ import { List as Menu, X, MagnifyingGlass } from "@phosphor-icons/react";
 
 const LINKS = [
   { href: "/app/swap",         label: "Swap"         },
+  { href: "/app/arrive",       label: "Arrive"       },
   { href: "/app/pools",        label: "Pools"        },
   { href: "/app/positions",    label: "Positions"    },
   { href: "/app/transactions", label: "Transactions" },
