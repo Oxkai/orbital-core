@@ -4,7 +4,128 @@
 
 **One pool for every stablecoin.** A Uniswap v4 hook that replaces constant-product math with the Orbital sphere/torus curve, so USDC, USDT, DAI and FRAX all trade out of a single shared reserve book instead of six shallow pairs.
 
-[**Live app**](https://orbital-hook.vercel.app/) · Robinhood Chain · Monad · Arbitrum Sepolia · Base Sepolia · Ethereum Sepolia · 205 tests
+[**Live app**](https://orbital-hook.vercel.app/) · Aurora (NEAR) · Robinhood Chain · Base Sepolia · Arbitrum Sepolia · 205 tests
+
+---
+
+## On NEAR
+
+Orbital's primary deployment is **Aurora**, the EVM that runs on NEAR. The hook
+is Solidity, and NEAR itself runs Rust/WASM, so Aurora is how an N-asset
+stablecoin book runs on NEAR at all.
+
+| | |
+|---|---|
+| OrbitalHook | [`0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88`](https://explorer.testnet.aurora.dev/address/0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88) |
+| Chain | Aurora testnet `1313161555` |
+| Pool | USDC · USDT · DAI · FRAX, 1bp, 31 bands, $5M seeded |
+
+Two integrations, both live:
+
+**The pool itself.** Full Uniswap v4 core deployed to Aurora — PoolManager,
+router, quoter, Permit2 — because none is canonical there. Addresses in
+[`orbitalHook/README.md`](orbitalHook/README.md#aurora-testnet-1313161555).
+
+**NEAR Intents, for arrival.** Orbital prices the swap; NEAR Intents prices the
+journey. A trader holding USDT on Tron does not care what either leg costs, they
+care what arrives. [`/app/arrive`](https://orbital-hook.vercel.app/app/arrive)
+quotes both: Intents over 216 assets on 39 chains, then Orbital's own V4Quoter
+on the Aurora pool.
+
+```
+1000 USDC on Arbitrum  ──Intents──►  999.80 USDC on NEAR   (25s)
+                       ──Orbital──►  998.90 DAI on Aurora
+                                     all-in ≈ 11 bps
+```
+
+Both numbers come from the systems that would execute them. Nothing is modelled
+by the app.
+
+**Intents quotes are `dry`.** They are priced by the same solver network as a
+real route, but mint no deposit address and request no signature, so nothing in
+the app can move funds. NEAR Intents has no testnet — mainnet with dry quotes is
+the documented way to develop against it.
+
+**The seam, stated plainly.** Intents settles to NEAR and to EVM mainnets, and
+does not list Aurora as a destination. So the last hop from NEAR to the Aurora
+pool is NEAR's own bridge and is not part of the Intents quote. The two legs are
+quoted separately because they execute separately.
+
+### Try it
+
+No login, no keys, no allowlist. Everything below runs from a fresh clone —
+nothing here depends on the hosted site being current.
+
+**1. The Orbital quote. Zero setup — reads the live Aurora pool:**
+
+```sh
+cast call 0x1D49545CccDA551d5f5b2Ec95Fc53C34432016cF \
+  'quoteExactInputSingle(((address,address,uint24,int24,address),bool,uint128,bytes))(uint256,uint256)' \
+  '((0x18c315d33339fd9604d80825ae770b5726a8f361,0x602e7b42515d3e93a04e176c09a24eaf9f617c88,0,1,0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88),false,999000000,0x)' \
+  --rpc-url https://testnet.aurora.dev
+```
+
+Expect roughly `998899829198497118768` — about 998.89 DAI out for 999 USDC in,
+fee included.
+
+**2. The NEAR Intents quote. Start the app, then ask it for a route:**
+
+```sh
+cd frontend && npm install && npm run dev
+```
+
+```sh
+curl -s -X POST http://localhost:3000/api/intents \
+  -H 'content-type: application/json' \
+  -d '{"originAssetId":"nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near",
+       "destinationAssetId":"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+       "amount":"1000000000"}'
+```
+
+Expect `amountOut` near `999804440` (999.80 USDC) and a `timeEstimate` around
+25 seconds. That is a live route priced by the NEAR Intents solver network, not
+a fixture — `GET /api/intents` returns the 216 assets it can route across 39
+chains.
+
+**3. The contracts:**
+
+```sh
+cd orbitalHook && forge test        # 205 tests, including a two-chain fork suite
+```
+
+**4. In the browser**, at `http://localhost:3000`:
+
+- `/app/arrive` — pick a chain and an asset, see both legs quoted and the
+  all-in cost.
+- `/app/swap` — connect any wallet, switch to Aurora testnet, take gas from the
+  Aurora faucet, then mint test stablecoins. The mocks expose a public
+  `mint(address,uint256)` with no owner check.
+- Quote the same size on USDC/USDT and then on DAI/FRAX. They land within
+  0.02 bps of each other, because they are the same book rather than two pools.
+- Open an LP position and choose a depeg band — the bound your capital will
+  quote down to before it stops trading.
+
+The [hosted app](https://orbital-hook.vercel.app/) runs the same code, but may
+lag this repository; the steps above are the authoritative ones.
+
+Asset index order differs per chain, because the hook sorts by address. Resolve
+by symbol, never by index.
+
+### What is new, and what is not
+
+Orbital predates this hackathon. The engine, the Orbital math libraries and the
+Uniswap v4 integration were built earlier in 2026 and are baseline.
+
+Built inside the hackathon window: the Aurora deployment and everything it
+needed, the NEAR Intents integration (`frontend/app/api/intents/`,
+`frontend/lib/intents/`, `frontend/lib/hooks/useIntentsQuote.ts`), the
+`/app/arrive` page, and the cross-chain settler deployment. The repository
+history separates the two.
+
+Libraries used, per the entry rules: Uniswap v4 (core and periphery),
+OpenZeppelin Contracts and uniswap-hooks, solmate, hookmate, Foundry and
+forge-std on the contract side; Next.js, React, wagmi, viem and TanStack Query
+on the frontend. The Orbital math libraries are mine and are baseline.
 
 ---
 
@@ -177,7 +298,7 @@ Everything above is the hook. This part is built on top of it and is not require
 
 [`OrbitalIntentSettler`](orbitalHook/src/crosschain/OrbitalIntentSettler.sol) implements [ERC-7683](https://eips.ethereum.org/EIPS/eip-7683), the cross-chain intents standard from Uniswap Labs and Across, settled over Hyperlane. It is covered by `OrbitalIntentSettler.t.sol`, `CrosschainSecurity.t.sol` and a fork suite that runs two live testnets at once against real Hyperlane Mailboxes.
 
-> The four pools listed above are **same-chain only**: none carries a settler. [`DeployCrosschain.s.sol`](orbitalHook/script/DeployCrosschain.s.sol) adds one to a chain that has a Hyperlane Mailbox, and the peers are registered with `setPeer` afterwards.
+> Settlers are deployed on Aurora, Base Sepolia and Arbitrum Sepolia, peered to each other, so those six routes are open. Robinhood Chain has no Hyperlane deployment and stays same-chain only. [`DeployCrosschain.s.sol`](orbitalHook/script/DeployCrosschain.s.sol) adds a settler to a chain with a Mailbox; `setPeer` registers the peers afterwards.
 
 ```
  user signs an intent            filler pays out                proof settles
@@ -198,17 +319,18 @@ Funds are never stuck: if an order is not settled, the user reclaims the escrow 
 
 ## Deployments
 
-Five live pools, one per EVM chain we target: Robinhood Chain testnet (primary), Monad Testnet, Arbitrum Sepolia, Base Sepolia and Ethereum Sepolia. Each chain is a separate book with its own reserves.
+Four live pools, one per EVM chain we target: Aurora testnet (primary), Robinhood Chain testnet, Base Sepolia and Arbitrum Sepolia. Each chain is a separate book with its own reserves.
 
-| Chain | Pool | Hook |
-|---|---|---|
-| **Robinhood Chain testnet** `46630` | USDC · USDT · DAI · FRAX | [`0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88`](https://explorer.testnet.chain.robinhood.com/address/0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88) |
-| Monad Testnet `10143` | USDC · USDT · DAI · FRAX | [`0x2Db3289884D575A7b49374F28d738DBF2dc42a88`](https://testnet.monadscan.com/address/0x2Db3289884D575A7b49374F28d738DBF2dc42a88) |
-| Arbitrum Sepolia `421614` | USDC · USDT · DAI · FRAX | [`0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88`](https://sepolia.arbiscan.io/address/0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88) |
-| Base Sepolia `84532` | USDC · USDT · DAI · FRAX | [`0xa1685261278e44C12921a0f213daDfBF9Beb6A88`](https://sepolia.basescan.org/address/0xa1685261278e44C12921a0f213daDfBF9Beb6A88) |
-| Ethereum Sepolia `11155111` | USDC · USDT · DAI · FRAX | [`0xd92022CB51f49D61261321836A7a7b2e1A332a88`](https://sepolia.etherscan.io/address/0xd92022CB51f49D61261321836A7a7b2e1A332a88) |
+Aurora is the EVM that runs on NEAR, which is why it is the primary deployment.
 
-Each pool uses a realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp) and is seeded with $5M of real capital on an eight-tier ladder: seven concentrated bands plus a small full-range backstop. The ladder's shape is not invented — it mirrors where LPs in the live Uniswap v3 USDC/USDT0 0.01% pool on Arbitrum actually place their capital, read tick by tick on-chain, so about two thirds of it sits within 5 bps of $1. Random retail swap flow runs on top, interleaved across the five chains, with each trade capped at $5,000.
+| Chain | Pool | Hook | Settler |
+|---|---|---|---|
+| **Aurora testnet** `1313161555` | USDC · USDT · DAI · FRAX | [`0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88`](https://explorer.testnet.aurora.dev/address/0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88) | `0x58D4…71b7` |
+| Robinhood Chain testnet `46630` | USDC · USDT · DAI · FRAX | [`0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88`](https://explorer.testnet.chain.robinhood.com/address/0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88) | — no Hyperlane |
+| Base Sepolia `84532` | USDC · USDT · DAI · FRAX | [`0xa1685261278e44C12921a0f213daDfBF9Beb6A88`](https://sepolia.basescan.org/address/0xa1685261278e44C12921a0f213daDfBF9Beb6A88) | `0x2D27…EF8E` |
+| Arbitrum Sepolia `421614` | USDC · USDT · DAI · FRAX | [`0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88`](https://sepolia.arbiscan.io/address/0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88) | `0xd980…7627` |
+
+Each pool uses a realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp) and is seeded with $5M of real capital on an eight-tier ladder: seven concentrated bands plus a small full-range backstop. The ladder's shape is not invented — it mirrors where LPs in the live Uniswap v3 USDC/USDT0 0.01% pool on Arbitrum actually place their capital, read tick by tick on-chain, so about two thirds of it sits within 5 bps of $1. Random retail swap flow runs on top, interleaved across the four chains, with each trade capped at $5,000.
 
 Quoted on the live $5M pool, all-in including the 1 bp fee:
 
@@ -220,11 +342,10 @@ Every one of the six pairs quotes within 0.02 bps of that, because they share on
 
 Token addresses, v4 infra (PoolManager, router, V4Quoter), Hyperlane Mailboxes and the peer registry all live in [`orbitalHook/deployments.json`](orbitalHook/deployments.json).
 
-> **Asset index order differs per chain.** The hook sorts assets ascending by address, and addresses are unrelated across chains, so USDC is index 1 on Arbitrum, 1 on Robinhood, 2 on Ethereum, 0 on Base and 0 on Monad. Always resolve by symbol, never by index.
+> **Asset index order differs per chain.** The hook sorts assets ascending by address, and addresses are unrelated across chains, so USDC is index 2 on Aurora, 1 on Robinhood, 0 on Base and 1 on Arbitrum. Always resolve by symbol, never by index.
 
 - Live app: <https://orbital-hook.vercel.app/>
-- Monad indexer: <https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql>, public, no key
-- Subgraph: one manifest for the other chains, per-chain addresses in [`subgraph/networks.json`](subgraph/networks.json). The app reads pools, positions and quotes straight from the chain, and uses an index only for history.
+- Subgraph: one manifest, per-chain addresses in [`subgraph/networks.json`](subgraph/networks.json). The app reads pools, positions and quotes straight from the chain, and uses the index only for history.
 
 ---
 
@@ -242,13 +363,9 @@ UHI/
 │   │   └── ReshapeLiquidity.s.sol      move a live pool onto the ladder in place
 │   ├── FEEDBACK.md                 Uniswap v4 developer feedback
 │   └── deployments.json            machine-readable address registry
-├── envio/                  Envio HyperIndex: the Monad indexer, deployed
+├── subgraph/               The Graph: one manifest, per-chain networks
 │   ├── schema.graphql              Pool, Asset, Tick, Swap, TickCross, PoolSnapshot
-│   ├── src/EventHandlers.ts        reproduces the engine's own crossing condition
-│   └── src/effects.ts              cached contract reads, keyed by hook and block
-├── subgraph/               The Graph: one manifest, the other chains
-│   ├── schema.graphql              the same entities
-│   ├── src/mapping.ts              the same crossing condition, AssemblyScript
+│   ├── src/mapping.ts              reproduces the engine's own crossing condition
 │   └── networks.json               per-chain address + start block
 └── frontend/               Next.js app: swap, pools, positions, transactions
     ├── lib/crosschain.ts           pool registry, from deployments.json
@@ -363,26 +480,10 @@ cd orbitalHook && forge test          # 205 tests
 
 ## Indexing and monitoring
 
-The pools are indexed twice over: [`envio/`](envio) is an Envio HyperIndex
-indexer covering Monad, and [`subgraph/`](subgraph) is the Graph manifest for
-the other chains. Pools, positions, quotes and swaps all read straight from the
-chain, so the app works whether or not an index is live.
-
-The Monad indexer is deployed and public, no key:
-
-```
-https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql
-```
-
-```sh
-curl -s -X POST https://indexer.dev.hyperindex.xyz/42f7655/v1/graphql \
-  -H 'content-type: application/json' \
-  -d '{"query":"{ Pool { swapCount volumeWad feesWad sumX rInt frozen } }"}'
-```
-
-Every figure it reports is derived independently of the one the hook holds, and
-the two match to the wei — see [`envio/README.md`](envio/README.md) for the
-comparison and how to re-run it.
+[`subgraph/`](subgraph) is the Graph manifest for the activity feed and 24h
+volume. No subgraph is currently deployed, so the app falls back to scanning
+logs over RPC — pools, positions, quotes and swaps all read straight from the
+chain, so everything works whether or not an index is live.
 
 The point is not a dashboard. `TickCrossed` only fires *after* a depeg bound is hit,
 so as a warning it arrives too late. Every handler therefore also reads live `slot0`

@@ -69,7 +69,7 @@ no v3 market at all.
 
 ## Status
 
-v1, working end-to-end (205 tests) and live on Robinhood Chain testnet, Monad Testnet, Arbitrum Sepolia, Base Sepolia and Ethereum Sepolia.
+v1, working end-to-end (205 tests) and live on Aurora testnet, Robinhood Chain testnet, Base Sepolia and Arbitrum Sepolia.
 
 **Engine**
 - [x] Asset registry, N tokens per pool, sorted, unique, immutable
@@ -223,6 +223,28 @@ Optional, and not required to use the pool. [`src/crosschain/OrbitalIntentSettle
 - **Settlement is an authenticated Hyperlane message.** The origin releases escrow only when its Mailbox delivers a message whose `(domain, sender)` matches a registered peer. No arbiter, no bond, no dispute game. `handle` is idempotent, so redelivery cannot double-pay.
 - **Liveness.** If the proof never arrives the user reclaims the escrow after `fillDeadline + refundBuffer`.
 
+### Deployed settlers
+
+Peered to each other, so Aurora ↔ Base ↔ Arbitrum are open in both directions.
+Robinhood Chain has no Hyperlane deployment and stays same-chain only.
+
+| Chain | Settler | Hyperlane Mailbox |
+|---|---|---|
+| Aurora testnet `1313161555` | `0x58D48990408b4ba45dE08679de3921EbD6fA71b7` | `0x04438ef7622f5412f82915F59caD4f704C61eA48` |
+| Base Sepolia `84532` | `0x2D27158904Db6ECf6241c21449132C8582c2EF8E` | `0x6966b0E55883d49BFB24539356a2f8A673E02039` |
+| Arbitrum Sepolia `421614` | `0xd98025353ABdd8997C6DF5F8eE59cD1e601A7627` | `0x598facE78a4302f11E3de0bee1894Da0b2Cb71F8` |
+
+Refund buffer 43,200s. Peers are registered with `setPeer(chainId, domain, settler)`
+and readable back through `peerByChainId(chainId)`.
+
+> Deployed and peered, but **no cross-chain order has been executed on these
+> live addresses** — a real fill also depends on Hyperlane relayers running the
+> route. The flow itself is covered: `CrosschainFork.t.sol` forks Base Sepolia
+> and Arbitrum Sepolia simultaneously and runs an order open, Orbital-routed
+> fill and proof settlement against the **real** Hyperlane Mailboxes, plus a
+> forged-proof rejection. `OrbitalIntentSettler.t.sol` and
+> `CrosschainSecurity.t.sol` cover the unit paths against a mock Mailbox.
+
 ---
 
 ## Deploy
@@ -240,7 +262,9 @@ forge script script/DeployTestnet.s.sol \
 
 [`TickLib`](src/libraries/TickLib.sol) is a deployed library rather than an inlined one — its band geometry runs at deploy and on LP actions, never inside a swap, so keeping it out of the hook costs no swap gas and leaves the hook comfortably under the 24 KB limit. Forge deploys and links it before mining the hook address; no extra step.
 
-`HYPERLANE_MAILBOX` is optional: leave it unset on a chain without Hyperlane (Robinhood Chain testnet) and the script skips the settler, so the pool is same-chain only. Where hookmate has no entry for the chain, pass `V4_POOL_MANAGER` as well.
+`HYPERLANE_MAILBOX` is optional: leave it unset on a chain without Hyperlane (Robinhood Chain testnet) and the script skips the settler, so the pool is same-chain only.
+
+On Aurora, pass `--legacy`: the chain has no EIP-1559, and without it forge fails at fee estimation before sending anything. Foundry also warns that Aurora lacks EIP-3855; that warning comes from a static chain list and is wrong — PUSH0, TSTORE and MCOPY all execute there, which matters because Uniswap v4 depends on transient storage. Where hookmate has no entry for the chain, pass `V4_POOL_MANAGER` as well.
 
 Once every chain is deployed, register each settler with the others (the owner calls `setPeer(chainId, hyperlaneDomain, bytes32(settler))` once per remote chain):
 
@@ -327,7 +351,26 @@ Developer feedback on the Uniswap stack, as required by the track: [`FEEDBACK.md
 
 Every address, per chain, is in [`deployments.json`](deployments.json). Owner of every hook: `0xb29e1ddDfc73E00dEE3EaA7EA102990ADca78b39`. Each hook's address is CREATE2-mined so its low bits encode its permission flags.
 
-### Robinhood Chain testnet `46630` (primary)
+### Aurora Testnet `1313161555` (primary)
+
+Aurora is the EVM that runs on NEAR. No canonical Uniswap v4 here, so the
+PoolManager, router and quoter are ours. Aurora has no EIP-1559, so every
+broadcast needs `--legacy`.
+
+| Contract | Address |
+|---|---|
+| OrbitalHook | [`0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88`](https://explorer.testnet.aurora.dev/address/0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88) |
+| PoolManager (v4) | `0x9BEACCac4e0358Cc276703dcE7341B9B9fEfd5f7` |
+| V4Quoter | `0x1D49545CccDA551d5f5b2Ec95Fc53C34432016cF` |
+| V4Router | `0x0E789f5e5047Ae2a6fcf571a14483CF695f55737` |
+| Permit2 | `0x3191Fc1E303EF4e12a7DE5f5d2e8d53A0660c5b9` |
+| TickLib | `0x3e06fd67021aacc92658942a1bfda8b637157d61` |
+| DAI (mock, 18dp) | `0x18c315d33339fd9604d80825ae770b5726a8f361` |
+| FRAX (mock, 18dp) | `0x387e386a0a9cad757479bca19e84a7787d4c4c1e` |
+| USDC (mock, 6dp) | `0x602e7b42515d3e93a04e176c09a24eaf9f617c88` |
+| USDT (mock, 6dp) | `0xe574c92e61579b3b77f5491a0c02c57157c915c1` |
+
+### Robinhood Chain testnet `46630`
 
 Uniswap v4 and the V4Router are already deployed here, so the hook plugs into them.
 
@@ -341,21 +384,6 @@ Uniswap v4 and the V4Router are already deployed here, so the hook plugs into th
 | USDC (mock, 6dp) | `0x2f7a2dc7d74645a31cabb5466219ccab70913377` |
 | DAI (mock, 18dp) | `0x45dc287a307eccf7426cb2377ee2865457592fae` |
 | FRAX (mock, 18dp) | `0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4` |
-
-### Monad Testnet `10143`
-
-No canonical Uniswap v4 here, so the PoolManager and router are ours, deployed by `DeployV4Core.s.sol` under a non-zero `CORE_SALT`.
-
-| Contract | Address |
-|---|---|
-| OrbitalHook | [`0x2Db3289884D575A7b49374F28d738DBF2dc42a88`](https://testnet.monadscan.com/address/0x2Db3289884D575A7b49374F28d738DBF2dc42a88) |
-| PoolManager (v4) | `0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7` |
-| V4Quoter | `0x2f7A2DC7d74645A31CABb5466219CCAB70913377` |
-| V4Router | `0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a` |
-| USDC (mock, 6dp) | `0x0a29619e8580d90b14200a734faad4677e9d1645` |
-| USDT (mock, 6dp) | `0x45dc287a307eccf7426cb2377ee2865457592fae` |
-| FRAX (mock, 18dp) | `0x871290c7a788395f1ce5f7cdd69917696e0c352a` |
-| DAI (mock, 18dp) | `0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4` |
 
 ### Arbitrum Sepolia `421614`
 
@@ -387,35 +415,20 @@ Uniswap v4 is canonically deployed here; the V4Quoter is ours, deployed by `Depl
 | DAI (mock, 18dp) | `0x92d06018f07cea34f09a2aa2c8bcc47a6ade59b4` |
 | FRAX (mock, 18dp) | `0xe6de3e3be032e391786754c824c5800ca010c54f` |
 
-### Ethereum Sepolia `11155111`
-
-Uniswap v4 is canonically deployed here; the V4Quoter is ours, deployed by `DeployQuoter.s.sol`.
-
-| Contract | Address |
-|---|---|
-| OrbitalHook | [`0xd92022CB51f49D61261321836A7a7b2e1A332a88`](https://sepolia.etherscan.io/address/0xd92022CB51f49D61261321836A7a7b2e1A332a88) |
-| PoolManager (v4, canonical) | `0xE03A1074c86CFeDd5C142C4F04F1a1536e203543` |
-| V4Quoter | `0x58D48990408b4ba45dE08679de3921EbD6fA71b7` |
-| V4Router | `0xf13D190e9117920c703d79B5F33732e10049b115` |
-| FRAX (mock, 18dp) | `0x51fb24e0e855e8709a017f3acc69ec6aa42cf8d6` |
-| USDT (mock, 6dp) | `0x7cd4e073fd118f2f1197c1c1aa450dd410ebdeef` |
-| USDC (mock, 6dp) | `0xd289f244ac5fb4e372bea5f92f07fa6960ca4307` |
-| DAI (mock, 18dp) | `0xf2dc831ee8e1400ce58f8c27427025cb91ec64cd` |
 An earlier set of deployments on these chains, plus Unichain Sepolia, is retired; those carried the ERC-7683 settlers, which these same-chain pools do not.
 
 ### Live state
 
 Each pool holds its $5M ladder across 8 seeded ticks, all interior (`kBound = 0`), with random retail
-swap flow run on top by [`SimulateSwaps.s.sol`](script/SimulateSwaps.s.sol) interleaved across the five
+swap flow run on top by [`SimulateSwaps.s.sol`](script/SimulateSwaps.s.sol) interleaved across the four
 chains by [`mixed-swaps.sh`](script/mixed-swaps.sh), each trade capped at $5,000:
 
 | Pool | TVL | Seeded ticks | All interior |
 |---|---|---|---|
+| Aurora | ~$5.00M | 8 | yes |
 | Robinhood | ~$5.00M | 8 | yes |
-| Monad | ~$5.00M | 8 | yes |
-| Arbitrum | ~$5.00M | 8 | yes |
 | Base | ~$5.00M | 8 | yes |
-| Ethereum | ~$5.00M | 8 | yes |
+| Arbitrum | ~$5.00M | 8 | yes |
 
 Read live off each chain, not recorded by hand: `slot0()`, `virtualReserve()` and `ticks(band)`.
 
