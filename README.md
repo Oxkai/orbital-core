@@ -18,7 +18,7 @@ stablecoin book runs on NEAR at all.
 |---|---|
 | OrbitalHook | [`0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88`](https://explorer.testnet.aurora.dev/address/0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88) |
 | Chain | Aurora testnet `1313161555` |
-| Pool | USDC · USDT · DAI · FRAX, 1bp, 31 bands, $5M seeded |
+| Pool | USDC · USDT · DAI · FRAX, 1bp, $5M across 8 seeded bands of a 31-band menu |
 
 Two integrations, both live:
 
@@ -29,7 +29,7 @@ router, quoter, Permit2 — because none is canonical there. Addresses in
 **NEAR Intents, for arrival.** Orbital prices the swap; NEAR Intents prices the
 journey. A trader holding USDT on Tron does not care what either leg costs, they
 care what arrives. [`/app/arrive`](https://orbital-hook.vercel.app/app/arrive)
-quotes both: Intents over 216 assets on 39 chains, then Orbital's own V4Quoter
+quotes both: Intents over 229 assets on 39 chains, then Orbital's own V4Quoter
 on the Aurora pool.
 
 ```
@@ -84,7 +84,7 @@ curl -s -X POST http://localhost:3000/api/intents \
 
 Expect `amountOut` near `999804440` (999.80 USDC) and a `timeEstimate` around
 25 seconds. That is a live route priced by the NEAR Intents solver network, not
-a fixture — `GET /api/intents` returns the 216 assets it can route across 39
+a fixture — `GET /api/intents` returns the 229 assets it can route across 39
 chains.
 
 **3. The contracts:**
@@ -119,8 +119,12 @@ Uniswap v4 integration were built earlier in 2026 and are baseline.
 Built inside the hackathon window: the Aurora deployment and everything it
 needed, the NEAR Intents integration (`frontend/app/api/intents/`,
 `frontend/lib/intents/`, `frontend/lib/hooks/useIntentsQuote.ts`), the
-`/app/arrive` page, and the cross-chain settler deployment. The repository
-history separates the two.
+`/app/arrive` page, and the cross-chain settler deployment.
+
+The split is tagged, not claimed. `pre-hackathon` marks the baseline, last
+touched 2026-10-14; `hackathon-submission` marks the work, every commit of it
+dated 2026-11-09. The diff judges should read is
+<https://github.com/Oxkai/orbital-core/compare/pre-hackathon...hackathon-submission>.
 
 Libraries used, per the entry rules: Uniswap v4 (core and periphery),
 OpenZeppelin Contracts and uniswap-hooks, solmate, hookmate, Foundry and
