@@ -48,6 +48,7 @@ import {
   useAllowance,
 } from "@/lib/hooks/useCrossChainOrder";
 import { TokenIcon } from "@/components/app/shared/TokenIcon";
+import { TabStrip, type SwapTab } from "@/components/app/swap/TabStrip";
 import { explainPoolError } from "@/lib/poolErrors";
 
 const LBL = {
@@ -561,7 +562,14 @@ function OrderTracker({ originChainId, destChainId, orderId, onDismiss }: {
 const DEFAULT_IN = `${DEFAULT_SWAP_CHAIN_ID}:USDC`;
 const DEFAULT_OUT = `${DEFAULT_SWAP_CHAIN_ID}:USDT`;
 
-export function SwapWidget() {
+export function SwapWidget({
+  tab,
+  onTabChange,
+}: {
+  /// Rendered inside this widget's header row, so Swap/Arrive costs no extra bar.
+  tab?: SwapTab;
+  onTabChange?: (t: SwapTab) => void;
+} = {}) {
   const [inKey, setInKey] = useState(DEFAULT_IN);
   const [outKey, setOutKey] = useState(DEFAULT_OUT);
   const [amountIn, setAmountIn] = useState("");
@@ -921,42 +929,24 @@ export function SwapWidget() {
   return (
     <div className="flex flex-col w-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5" style={{ backgroundColor: color.surface1 }}>
-        <span
-          style={{
-            fontFamily: typography.p2.family,
-            fontSize: typography.p2.size,
-            fontWeight: 500,
-            letterSpacing: "-0.01em",
-            color: color.textPrimary,
-          }}
+      <div className="flex items-center justify-between gap-4 px-5 pt-3" style={{ backgroundColor: color.surface1 }}>
+        {tab && <TabStrip tab={tab} onChange={onTabChange} />}
+        <span className="flex items-center gap-3 min-w-0" style={{ paddingBottom: 5 }}>
+          <span style={body("p3", color.textMuted)} className="truncate">
+            {isCrossChain
+              ? `${DEPLOYMENTS[tokenIn.chainId]?.short} → ${DEPLOYMENTS[tokenOut.chainId]?.short}`
+              : originDep?.name}
+          </span>
+        <button
+          onClick={() => setShowSettings((v) => !v)}
+          className="flex items-center justify-center w-7 h-7 shrink-0 hover:opacity-100 opacity-70 transition-opacity"
+          style={{ cursor: "pointer" }}
+          aria-label="Swap settings"
+          aria-expanded={showSettings}
         >
-          Swap
+          <GearSix size={14} color={showSettings ? color.textPrimary : color.textMuted} weight="regular" />
+        </button>
         </span>
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-2.5 h-7" style={{ backgroundColor: color.surface2 }}>
-            <span
-              style={{
-                fontFamily: typography.caption.family,
-                fontSize: "11px",
-                letterSpacing: "0.02em",
-                color: color.textSecondary,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {isCrossChain
-                ? `${DEPLOYMENTS[tokenIn.chainId]?.short} → ${DEPLOYMENTS[tokenOut.chainId]?.short}`
-                : originDep?.name}
-            </span>
-          </div>
-          <button
-            onClick={() => setShowSettings((v) => !v)}
-            className="flex items-center justify-center w-7 h-7 hover:opacity-100 opacity-70 transition-opacity"
-            style={{ cursor: "pointer" }}
-          >
-            <GearSix size={14} color={showSettings ? color.textPrimary : color.textMuted} weight="regular" />
-          </button>
-        </div>
       </div>
 
       {showSettings && (

@@ -1,4 +1,4 @@
-import { SwapWidget } from "@/components/app/swap/SwapWidget";
+import { SwapTabs } from "@/components/app/swap/SwapTabs";
 import { AsciiBackground } from "@/components/app/shared/AsciiBackground";
 
 // Radial vignette so the scrolling ASCII field fades out around the widget and
@@ -18,8 +18,8 @@ export default function SwapPage() {
         <AsciiBackground colorMode="dark" fontSize={9} asciiChars="@" showPattern isPlaying />
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
-        <SwapWidget />
+      <div className="relative z-10 w-full max-w-md px-4 sm:px-0">
+        <SwapTabs initial="swap" />
       </div>
     </section>
   );

@@ -17,13 +17,52 @@
  */
 
 import { useMemo, useState } from "react";
+import { ArrowDown, CaretDown, CaretUp, Info } from "@phosphor-icons/react";
 import { useReadContract } from "wagmi";
 
 import { color, typography } from "@/constants";
+import { TokenIcon } from "@/components/app/shared/TokenIcon";
+import { TabStrip, type SwapTab } from "@/components/app/swap/TabStrip";
 import { QUOTER_ABI } from "@/lib/contracts";
 import { AURORA_TESTNET_ID, DEPLOYMENTS } from "@/lib/crosschain";
 import { useIntentsQuote, useIntentsTokens } from "@/lib/hooks/useIntentsQuote";
 import { chainLabel } from "@/lib/intents/types";
+
+/// Section label: uppercase, tracked out, muted — as used by the swap widget
+/// and the add-liquidity page, so this panel reads as part of the same app.
+const LBL = {
+  fontFamily: typography.caption.family,
+  fontSize: typography.caption.size,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase" as const,
+  fontWeight: 500,
+};
+
+function body(size: "p1" | "p2" | "p3" | "caption" = "p2", c: string = color.textPrimary) {
+  const t = typography[size];
+  return {
+    fontFamily: t.family,
+    fontSize: t.size,
+    lineHeight: t.lineHeight,
+    letterSpacing: t.letterSpacing,
+    color: c,
+    fontVariantNumeric: "tabular-nums" as const,
+  };
+}
+
+/// The 36px figure both token boxes lead with, matching `TokenBox` in the swap
+/// widget. Dimmed when there is nothing to show yet.
+function hero(filled: boolean): React.CSSProperties {
+  return {
+    fontFamily: typography.h1.family,
+    fontSize: "36px",
+    letterSpacing: "-0.03em",
+    fontWeight: 500,
+    color: filled ? color.textPrimary : color.textMuted,
+    lineHeight: 1,
+    fontVariantNumeric: "tabular-nums",
+  };
+}
 
 /**
  * The basket is reached through NEAR, the one chain Intents serves that also
@@ -45,7 +84,14 @@ function fmtSeconds(s?: number) {
   return s < 90 ? `${s}s` : `${Math.round(s / 60)} min`;
 }
 
-export function ArrivePanel() {
+export function ArrivePanel({
+  tab,
+  onTabChange,
+}: {
+  /// Rendered inside this panel's header row, so Swap/Arrive costs no extra bar.
+  tab?: SwapTab;
+  onTabChange?: (t: SwapTab) => void;
+} = {}) {
   const { tokens, loading: tokensLoading, error: tokensError } = useIntentsTokens();
 
   const [originChain, setOriginChain] = useState("arb");
@@ -137,212 +183,405 @@ export function ArrivePanel() {
     const startWad = (amountRaw * 10n ** 18n) / 10n ** BigInt(origin.decimals);
     const endWad = (swapOut * 10n ** 18n) / 10n ** BigInt(outAsset.decimals);
     if (startWad === 0n) return undefined;
-    return Number(((startWad - endWad) * 10000n) / startWad);
+    // Scaled to 1e6 and divided down, so the bps keeps two decimals: integer
+    // division straight to bps truncated 1.9 bps to 1 and showed half the cost.
+    return Number(((startWad - endWad) * 1_000_000n) / startWad) / 100;
   }, [origin, outAsset, amountRaw, swapOut]);
 
-  const label = (t: string) => (
-    <div style={{ ...typography.caption, color: color.textMuted, marginBottom: 6 }}>{t}</div>
-  );
-  const selectStyle: React.CSSProperties = {
-    backgroundColor: color.surface2,
-    color: color.textPrimary,
-    border: `1px solid ${color.borderSubtle}`,
-    padding: "8px 10px",
-    width: "100%",
-    fontFamily: "var(--font-mono)",
-    fontSize: 13,
-  };
+  const originFilled = Number(amountText) > 0;
+  const outStr =
+    swapOut !== undefined && outAsset
+      ? (Number(swapOut) / 10 ** outAsset.decimals).toFixed(4)
+      : "";
+  const legTwoBusy = swap.isLoading && wantSymbol !== "USDC";
 
   return (
-    <div style={{ backgroundColor: color.surface1, border: `1px solid ${color.borderSubtle}` }}>
-      <div style={{ padding: "16px 18px", borderBottom: `1px solid ${color.borderSubtle}` }}>
-        <div style={{ ...typography.p1, color: color.textPrimary }}>Arrive from any chain</div>
-        <div style={{ ...typography.caption, color: color.textMuted, marginTop: 4 }}>
-          NEAR Intents prices the journey. Orbital prices the swap. Both quoted live.
+    <div className="flex flex-col w-full">
+      {tab && (
+        <div
+          className="flex items-center justify-between gap-4 px-5 pt-3"
+          style={{ backgroundColor: color.surface1 }}
+        >
+          <TabStrip tab={tab} onChange={onTabChange} />
+          <span style={{ ...body("p3", color.textMuted), paddingBottom: 5 }} className="truncate">
+            → Aurora
+          </span>
         </div>
-      </div>
+      )}
 
-      <div style={{ padding: 18, display: "grid", gap: 14 }}>
-        {tokensError && (
-          <div style={{ ...typography.caption, color: color.error }}>
-            Intents token list unavailable: {tokensError}
-          </div>
-        )}
+      {tokensError && (
+        <div className="mt-px px-5 py-4" style={{ backgroundColor: color.surface1 }}>
+          <span style={body("p3", color.warning)}>Intents token list unavailable: {tokensError}</span>
+        </div>
+      )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            {label("You hold, on")}
-            <select
-              value={originChain}
-              onChange={(e) => setOriginChain(e.target.value)}
-              style={selectStyle}
-              disabled={tokensLoading}
-            >
-              {chains.map((c) => (
-                <option key={c} value={c}>
-                  {chainLabel(c)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            {label("Asset")}
-            <select
-              value={origin?.symbol ?? ""}
-              onChange={(e) => setOriginSymbol(e.target.value)}
-              style={selectStyle}
-              disabled={tokensLoading}
-            >
-              {originOptions.map((t) => (
-                <option key={t.assetId} value={t.symbol}>
-                  {t.symbol}
-                </option>
-              ))}
-            </select>
-          </div>
+      {/* You hold */}
+      <div className="mt-px px-5 py-5" style={{ backgroundColor: color.surface1 }}>
+        <div className="flex items-center justify-between mb-3">
+          <span style={{ ...LBL, color: color.textMuted }}>You hold</span>
+          <Picker
+            value={originChain}
+            onChange={(v) => setOriginChain(v)}
+            disabled={tokensLoading}
+            options={chains.map((c) => ({ value: c, label: chainLabel(c) }))}
+            muted
+          />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            {label("Amount")}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
             <input
-              value={amountText}
-              onChange={(e) => setAmountText(e.target.value.replace(/[^\d.]/g, ""))}
+              type="text"
               inputMode="decimal"
-              style={selectStyle}
+              placeholder="0"
+              value={amountText}
+              onChange={(e) => {
+                if (/^\d*(?:\.\d*)?$/.test(e.target.value)) setAmountText(e.target.value);
+              }}
+              className="w-full bg-transparent outline-none"
+              style={hero(originFilled)}
             />
           </div>
-          <div>
-            {label("You want")}
-            <select value={wantSymbol} onChange={(e) => setWantSymbol(e.target.value)} style={selectStyle}>
-              {Object.keys(aurora?.assets ?? {}).map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          <TokenSelect
+            symbol={origin?.symbol ?? "—"}
+            value={origin?.symbol ?? ""}
+            onChange={(v) => setOriginSymbol(v)}
+            disabled={tokensLoading}
+            options={originOptions.map((t) => ({ value: t.symbol, label: t.symbol }))}
+          />
         </div>
 
-        <Row
+        <div className="mt-3">
+          <span style={body("caption", color.textMuted)}>
+            ≈ ${originFilled ? Number(amountText).toFixed(2) : "0.00"}
+          </span>
+        </div>
+      </div>
+
+      {/* Direction marker, sitting in the 1px seam like the swap widget's flip */}
+      <div className="relative" style={{ height: 0 }}>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+          <div
+            className="flex items-center justify-center w-9 h-9"
+            style={{ backgroundColor: color.surface2, outline: `2px solid ${color.bg}`, borderRadius: 2 }}
+          >
+            <ArrowDown size={14} color={color.textPrimary} weight="regular" />
+          </div>
+        </div>
+      </div>
+
+      {/* You receive */}
+      <div className="mt-px px-5 py-5" style={{ backgroundColor: color.surface1 }}>
+        <div className="flex items-center justify-between mb-3">
+          <span style={{ ...LBL, color: color.textMuted }}>You receive</span>
+          <span style={body("caption", color.textMuted)}>Aurora testnet</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div style={hero(!!outStr)}>{legTwoBusy ? "…" : outStr || "0"}</div>
+          </div>
+          <TokenSelect
+            symbol={wantSymbol}
+            value={wantSymbol}
+            onChange={(v) => setWantSymbol(v)}
+            chainId={AURORA_TESTNET_ID}
+            options={Object.keys(aurora?.assets ?? {}).map((s) => ({ value: s, label: s }))}
+          />
+        </div>
+
+        <div className="mt-3">
+          <span style={body("caption", color.textMuted)}>
+            ≈ ${outStr ? Number(outStr).toFixed(2) : "0.00"}
+          </span>
+        </div>
+      </div>
+
+      {/* The two legs, each priced by the system that would execute it */}
+      <div className="mt-px flex flex-col gap-px">
+        <Leg
           n={1}
-          title={`${chainLabel(originChain)} → NEAR, via Intents`}
+          title={`${chainLabel(originChain)} → NEAR · via Intents`}
           busy={quoting}
           error={quoteError}
-          lines={
+          summary={quote ? `${quote.amountOutFormatted} USDC` : undefined}
+          rows={
             quote
               ? [
-                  ["arrives", `${quote.amountOutFormatted} USDC`],
-                  ["value", fmtUsd(quote.amountOutUsd)],
-                  ["takes", fmtSeconds(quote.timeEstimate)],
+                  ["Value", fmtUsd(quote.amountOutUsd)],
+                  ["Takes", fmtSeconds(quote.timeEstimate)],
                 ]
               : undefined
           }
         />
-
-        <Row
+        <Leg
           n={2}
-          title={`USDC → ${wantSymbol}, on Orbital`}
-          busy={swap.isLoading}
-          error={swap.isError ? "pool did not quote" : undefined}
-          lines={
-            swapOut !== undefined && outAsset
-              ? [
-                  [
-                    "receives",
-                    `${(Number(swapOut) / 10 ** outAsset.decimals).toFixed(4)} ${wantSymbol}`,
-                  ],
-                  ["pool", "Aurora testnet, 1bp"],
-                ]
-              : undefined
+          title={
+            quote
+              ? `${quote.amountOutFormatted} USDC → ${wantSymbol} · on Orbital`
+              : `USDC → ${wantSymbol} · on Orbital`
           }
+          busy={legTwoBusy}
+          error={swap.isError ? "Pool did not quote" : undefined}
+          summary={outStr ? `${outStr} ${wantSymbol}` : undefined}
+          rows={outStr ? [["Pool", "Aurora testnet · 1bp"]] : undefined}
         />
-
-        {allInBps !== undefined && (
-          <div
-            style={{
-              backgroundColor: color.surface2,
-              padding: "12px 14px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-            }}
-          >
-            <span style={{ ...typography.p2, color: color.textSecondary }}>All-in cost</span>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 18,
-                color: color.textPrimary,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {(allInBps / 100).toFixed(2)}%
-            </span>
-          </div>
-        )}
-
-        <p style={{ ...typography.caption, color: color.textMuted, lineHeight: 1.5 }}>
-          Intents quotes are <strong>dry</strong>: priced by the same solver network as a real
-          route, but they mint no deposit address and request no signature, so nothing here can
-          move funds. Intents has no testnet. It settles to NEAR and to EVM mainnets and does not
-          list Aurora as a destination, so the final hop from NEAR to the Aurora pool is NEAR&apos;s
-          own bridge and is not included in leg one.
-        </p>
       </div>
+
+      {/* All-in cost — the number the whole page exists to produce */}
+      <div
+        className="mt-px px-5 py-4 flex items-center justify-between"
+        style={{ backgroundColor: color.surface1 }}
+      >
+        <div className="flex flex-col gap-1">
+          <span style={{ ...LBL, color: color.textMuted }}>All-in cost</span>
+          <span style={body("caption", color.textMuted)}>Both legs, against what you started with</span>
+        </div>
+        <span
+          style={{
+            fontFamily: typography.h1.family,
+            fontSize: "28px",
+            letterSpacing: "-0.03em",
+            fontWeight: 500,
+            color: allInBps === undefined ? color.textMuted : color.textPrimary,
+            lineHeight: 1,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {allInBps === undefined ? "—" : `${allInBps.toFixed(2)} bps`}
+        </span>
+      </div>
+
+      <DryNote />
     </div>
   );
 }
 
-function Row({
+/// The dry-quote caveat and the Aurora seam. Both matter, but neither needs to
+/// occupy a third of the panel: one line states the guarantee, the detail is a
+/// click away behind the same disclosure the swap widget's info panel uses.
+function DryNote() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-px" style={{ backgroundColor: color.surface1 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-(--color-surface-2) transition-colors"
+        style={{ cursor: "pointer" }}
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2.5 min-w-0">
+          <Info size={13} color={color.textMuted} weight="regular" style={{ flexShrink: 0 }} />
+          <span style={body("p3", color.textSecondary)}>Quotes are dry — nothing here moves funds</span>
+        </span>
+        {open ? (
+          <CaretUp size={12} color={color.textMuted} weight="regular" style={{ flexShrink: 0 }} />
+        ) : (
+          <CaretDown size={12} color={color.textMuted} weight="regular" style={{ flexShrink: 0 }} />
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="px-5 py-4 flex flex-col gap-2.5"
+          style={{ borderTop: `1px dashed ${color.borderSubtle}` }}
+        >
+          <p style={body("p3", color.textMuted)}>
+            Priced by the same solver network as a real route, but no deposit address is minted and
+            no signature is requested. Intents has no testnet.
+          </p>
+          <p style={body("p3", color.textMuted)}>
+            It does not list Aurora as a destination, so the final hop from NEAR to the Aurora pool
+            is NEAR&apos;s own bridge and is not included in leg one.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/// A native select dressed as the app's surface2 control, so the 39-chain and
+/// 229-asset lists stay keyboard- and screen-reader-native while matching the
+/// token buttons either side of them.
+function Picker({
+  value,
+  onChange,
+  options,
+  disabled,
+  muted,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className="relative flex items-center">
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="appearance-none outline-none hover:bg-(--color-surface-3) transition-colors"
+        style={{
+          backgroundColor: color.surface2,
+          color: muted ? color.textSecondary : color.textPrimary,
+          fontFamily: typography.caption.family,
+          fontSize: "11px",
+          letterSpacing: "0.02em",
+          height: 28,
+          padding: "0 26px 0 10px",
+          border: "none",
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <CaretDown
+        size={10}
+        color={color.textMuted}
+        weight="regular"
+        style={{ position: "absolute", right: 9, pointerEvents: "none" }}
+      />
+    </div>
+  );
+}
+
+/// The token control from the swap widget's `TokenBox`: icon, symbol, caret —
+/// with a native select laid over it so the list itself stays native.
+function TokenSelect({
+  symbol,
+  value,
+  onChange,
+  options,
+  disabled,
+  chainId,
+}: {
+  symbol: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  chainId?: number;
+}) {
+  return (
+    <div className="relative shrink-0">
+      <div
+        className="flex items-center gap-2 pl-2 pr-3 h-10"
+        style={{ backgroundColor: color.surface2 }}
+      >
+        <TokenIcon symbol={symbol} size={28} chainId={chainId} ringColor={color.surface2} />
+        <span style={{ ...body("p2", color.textPrimary), fontWeight: 500 }}>{symbol}</span>
+        <CaretDown size={11} color={color.textMuted} weight="regular" />
+      </div>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label="Asset"
+        className="absolute inset-0 w-full h-full opacity-0"
+        style={{ cursor: disabled ? "not-allowed" : "pointer" }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/// One priced leg of the journey.
+///
+/// Collapsed, it states the route and what it hands on — enough to follow the
+/// chain from the amount entered to the amount received. The rest sits behind
+/// the caret, on the same disclosure the swap widget's info panel uses, so the
+/// two legs cost four lines instead of eleven.
+function Leg({
   n,
   title,
+  summary,
   busy,
   error,
-  lines,
+  rows,
 }: {
   n: number;
   title: string;
+  /// The figure this leg hands to the next one, shown while collapsed.
+  summary?: string;
   busy?: boolean;
   error?: string;
-  lines?: [string, string][];
+  rows?: [string, string][];
 }) {
+  const [open, setOpen] = useState(false);
+  const expandable = !!rows?.length && !busy && !error;
+
   return (
-    <div style={{ border: `1px solid ${color.borderSubtle}`, padding: "12px 14px" }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: lines || busy || error ? 8 : 0 }}>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: color.bg,
-            backgroundColor: color.textMuted,
-            width: 18,
-            height: 18,
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          {n}
-        </span>
-        <span style={{ ...typography.p2, color: color.textPrimary }}>{title}</span>
-      </div>
-      {busy && <div style={{ ...typography.caption, color: color.textMuted }}>quoting…</div>}
-      {error && <div style={{ ...typography.caption, color: color.warning }}>{error}</div>}
-      {lines?.map(([k, v]) => (
-        <div key={k} style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-          <span style={{ ...typography.caption, color: color.textMuted }}>{k}</span>
+    <div style={{ backgroundColor: color.surface1 }}>
+      <button
+        onClick={() => expandable && setOpen((v) => !v)}
+        className={`w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left ${
+          expandable ? "hover:bg-(--color-surface-2) transition-colors" : ""
+        }`}
+        style={{ cursor: expandable ? "pointer" : "default" }}
+        aria-expanded={expandable ? open : undefined}
+      >
+        <span className="flex items-center gap-2.5 min-w-0">
           <span
+            className="flex items-center justify-center shrink-0"
             style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 12,
-              color: color.textPrimary,
-              fontVariantNumeric: "tabular-nums",
+              width: 18,
+              height: 18,
+              backgroundColor: color.surface3,
+              color: color.textSecondary,
+              fontFamily: typography.caption.family,
+              fontSize: "10px",
+              fontWeight: 500,
             }}
           >
-            {v}
+            {n}
           </span>
+          <span style={{ ...body("p3", color.textPrimary), fontWeight: 500 }} className="truncate">
+            {title}
+          </span>
+        </span>
+
+        <span className="flex items-center gap-2 shrink-0">
+          {busy ? (
+            <span style={body("p3", color.textMuted)}>Quoting…</span>
+          ) : error ? (
+            <span style={body("p3", color.warning)}>{error}</span>
+          ) : (
+            <span style={body("p3", color.textSecondary)}>{summary ?? "—"}</span>
+          )}
+          {expandable &&
+            (open ? (
+              <CaretUp size={12} color={color.textMuted} weight="regular" />
+            ) : (
+              <CaretDown size={12} color={color.textMuted} weight="regular" />
+            ))}
+        </span>
+      </button>
+
+      {open && expandable && (
+        <div
+          className="px-5 py-3.5 flex flex-col gap-2"
+          style={{ borderTop: `1px dashed ${color.borderSubtle}` }}
+        >
+          {rows?.map(([k, v]) => (
+            <div key={k} className="flex items-center justify-between">
+              <span style={{ ...LBL, color: color.textMuted }}>{k}</span>
+              <span style={body("p3", color.textSecondary)}>{v}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

@@ -8,9 +8,11 @@ import { CHAIN_IDS, PRIMARY_CHAIN_ID } from "@/lib/crosschain";
 import { color, typography } from "@/constants";
 import { List as Menu, X, MagnifyingGlass } from "@phosphor-icons/react";
 
+// Arrive is a tab inside the swap widget, not a destination of its own, so it
+// is not listed here. `/app/arrive` still resolves — it renders the same page
+// with that tab open — because the README links it.
 const LINKS = [
   { href: "/app/swap",         label: "Swap"         },
-  { href: "/app/arrive",       label: "Arrive"       },
   { href: "/app/pools",        label: "Pools"        },
   { href: "/app/positions",    label: "Positions"    },
   { href: "/app/transactions", label: "Transactions" },

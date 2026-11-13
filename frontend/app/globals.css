@@ -159,9 +159,20 @@ body {
      control, such as a pool or transaction row, so those are picked up too:
      their surface-2 tint is an 8/255 step that reads as nothing on its own.
      `inset-0` opts an element out, being the full-bleed anchor stretched over
-     such a row, which would otherwise veil the row twice. */
+     such a row, which would otherwise veil the row twice.
+
+     The veil fills the whole padding box, so it only belongs on a control that
+     HAS a surface. On a text-only control — a tab, a "Max", a bare caret — it
+     paints a grey slab around the glyph that reads as a selected chip rather
+     than as hover. Those are matched out by requiring a declared background,
+     and they carry their own feedback through `hover:opacity-*` or a colour
+     change instead. */
   :where(a, button, [role="button"], [class*="hover:bg-"]):not(:disabled):not([aria-disabled="true"]):not(
       [class*="inset-0"]
+    ):is(
+      [style*="background-color"],
+      [class*="bg-"],
+      [class*="hover:bg-"]
     ) {
     &:hover {
       box-shadow: inset 0 0 0 999px var(--hover-overlay);
@@ -182,6 +193,21 @@ body {
       &:active {
         box-shadow: inset 0 0 0 999px var(--press-overlay-inverse);
       }
+    }
+  }
+
+  /* The other half: a control with no surface of its own still needs feedback,
+     and the veil is exactly what it must not get. It dims instead — the same
+     convention the hand-written `hover:opacity-*` controls here already use,
+     which are matched out so the two do not fight. */
+  :where(a, button, [role="button"]):not(:disabled):not([aria-disabled="true"]):not([class*="inset-0"]):not(
+      [style*="background-color"]
+    ):not([class*="bg-"]):not([class*="opacity"]) {
+    &:hover {
+      opacity: 0.75;
+    }
+    &:active {
+      opacity: 0.6;
     }
   }
 

@@ -145,8 +145,8 @@ export function getThemeCssVariables(theme: ThemeName): Record<string, string> {
     // the same factor on a light surface blows out. A translucent overlay
     // moves every control by the same visible amount whatever it starts from.
     // Dark themes lift toward white; light themes deepen toward black.
-    "--hover-overlay": isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)",
-    "--press-overlay": isDark ? "rgba(255,255,255,0.17)" : "rgba(0,0,0,0.13)",
+    "--hover-overlay": isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.045)",
+    "--press-overlay": isDark ? "rgba(255,255,255,0.11)" : "rgba(0,0,0,0.085)",
     // A filled button whose background IS the text colour (white on dark,
     // near-black on light) is already at the end of the scale, so it takes the
     // veil from the other direction.
