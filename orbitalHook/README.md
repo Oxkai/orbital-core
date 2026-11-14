@@ -370,6 +370,23 @@ broadcast needs `--legacy`.
 | USDC (mock, 6dp) | `0x602e7b42515d3e93a04e176c09a24eaf9f617c88` |
 | USDT (mock, 6dp) | `0xe574c92e61579b3b77f5491a0c02c57157c915c1` |
 
+### Monad testnet `10143`
+
+Uniswap v4 is not canonical here, so the whole stack is ours: PoolManager, router, quoter and Permit2. Monad charges the full gas **limit** rather than gas used, and `eth_estimateGas` is unreliable, so scripts here pass an explicit `--gas-limit`.
+
+| Contract | Address |
+|---|---|
+| OrbitalHook | [`0x2Db3289884D575A7b49374F28d738DBF2dc42a88`](https://testnet.monadscan.com/address/0x2Db3289884D575A7b49374F28d738DBF2dc42a88) |
+| PoolManager (v4) | `0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7` |
+| V4Quoter | `0x2f7A2DC7d74645A31CABb5466219CCAB70913377` |
+| V4Router | `0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a` |
+| USDC (mock, 6dp) | `0x0a29619e8580d90b14200a734faad4677e9d1645` |
+| USDT (mock, 6dp) | `0x45dc287a307eccf7426cb2377ee2865457592fae` |
+| FRAX (mock, 18dp) | `0x871290c7a788395f1ce5f7cdd69917696e0c352a` |
+| DAI (mock, 18dp) | `0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4` |
+
+> Three of those token addresses also appear under Robinhood Chain, for a different symbol. One account deployed the mocks on both chains with its nonces in step, so CREATE handed out the same addresses. They are unrelated contracts on unrelated chains — resolve a token by `(chain, address)`, never by address alone.
+
 ### Robinhood Chain testnet `46630`
 
 Uniswap v4 and the V4Router are already deployed here, so the hook plugs into them.

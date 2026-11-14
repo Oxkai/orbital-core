@@ -106,9 +106,9 @@ and the README says so too.
   legs separately for this reason.
 - **The Orbital side does have executed transactions.** Twelve swaps have
   settled in the Aurora pool; four are linked from the README.
-- **The pools are testnet.** Aurora testnet (`1313161555`) is primary;
-  Arbitrum Sepolia, Base Sepolia and Robinhood Chain testnet carry the same
-  hook.
+- **The pools are testnet.** Aurora testnet (`1313161555`) is primary; Monad
+  testnet, Arbitrum Sepolia, Base Sepolia and Robinhood Chain testnet carry the
+  same hook. Each holds $5M and quotes every pair within ~1bp.
 - **An admin can pause.** The hook and the settler are `Ownable2Step, Pausable`.
   Pausing stops swaps and deposits — but `removeLiquidity` and `collect` are
   deliberately *not* pausable, so no one can trap an LP's funds.

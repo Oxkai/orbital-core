@@ -67,6 +67,7 @@ export function deployBlockFor(chainId: number): bigint {
 // 18-decimal, which is wrong on every chain now.
 
 export const TOKEN_META = TOKEN_DISPLAY;
+export { tokenDisplay } from "@/lib/crosschain";
 
 // ─── PoolKey ──────────────────────────────────────────────────────────────────
 

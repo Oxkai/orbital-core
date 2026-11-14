@@ -4,7 +4,7 @@
 
 Deployed on **Aurora**, NEAR's EVM, and priced from any of 39 chains through **NEAR Intents**.
 
-[**Live app**](https://orbital-hook.vercel.app/) · Aurora (NEAR) · Robinhood Chain · Base Sepolia · Arbitrum Sepolia · 205 tests
+[**Live app**](https://orbital-hook.vercel.app/) · Aurora (NEAR) · Monad · Robinhood Chain · Base Sepolia · Arbitrum Sepolia · 205 tests
 
 <img src="frontend/public/intro.webp" alt="Orbital Hook — A Spherical AMM Engine" />
 
@@ -384,11 +384,12 @@ Aurora is the EVM that runs on NEAR, which is why it is the primary deployment.
 | Chain | Pool | Hook | Settler |
 |---|---|---|---|
 | **Aurora testnet** `1313161555` | USDC · USDT · DAI · FRAX | [`0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88`](https://explorer.testnet.aurora.dev/address/0xdb5b8f2078e28a50e1e9f068b9aa00c560702a88) | `0x58D4…71b7` |
+| Monad testnet `10143` | USDC · USDT · FRAX · DAI | [`0x2Db3289884D575A7b49374F28d738DBF2dc42a88`](https://testnet.monadscan.com/address/0x2Db3289884D575A7b49374F28d738DBF2dc42a88) | — no settler |
 | Robinhood Chain testnet `46630` | USDC · USDT · DAI · FRAX | [`0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88`](https://explorer.testnet.chain.robinhood.com/address/0xe2cE434ABB1F2a939fA017f69CD5f7c19c36Aa88) | — no Hyperlane |
 | Base Sepolia `84532` | USDC · USDT · DAI · FRAX | [`0xa1685261278e44C12921a0f213daDfBF9Beb6A88`](https://sepolia.basescan.org/address/0xa1685261278e44C12921a0f213daDfBF9Beb6A88) | `0x2D27…EF8E` |
 | Arbitrum Sepolia `421614` | USDC · USDT · DAI · FRAX | [`0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88`](https://sepolia.arbiscan.io/address/0x3F09f9eCf71Cf78f346Eb2683D4a295D00e82A88) | `0xd980…7627` |
 
-Each pool uses a realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp) and is seeded with $5M of real capital on an eight-tier ladder: seven concentrated bands plus a small full-range backstop. The ladder's shape is not invented — it mirrors where LPs in the live Uniswap v3 USDC/USDT0 0.01% pool on Arbitrum actually place their capital, read tick by tick on-chain, so about two thirds of it sits within 5 bps of $1. Random retail swap flow runs on top, interleaved across the four chains, with each trade capped at $5,000.
+Each pool uses a realistic decimal mix (USDC/USDT 6dp, DAI/FRAX 18dp) and is seeded with $5M of real capital on an eight-tier ladder: seven concentrated bands plus a small full-range backstop. The ladder's shape is not invented — it mirrors where LPs in the live Uniswap v3 USDC/USDT0 0.01% pool on Arbitrum actually place their capital, read tick by tick on-chain, so about two thirds of it sits within 5 bps of $1. Random retail swap flow runs on top, interleaved across the chains, with each trade capped at $5,000.
 
 Quoted on the live $5M pool, all-in including the 1 bp fee:
 

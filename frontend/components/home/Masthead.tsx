@@ -1,4 +1,5 @@
 import { color, typography } from "@/constants";
+import { DEPLOYED_CHAINS } from "@/lib/crosschain";
 import { Emphasized } from "./Emphasized";
 import { SectionLabel } from "./SectionLabel";
 
@@ -102,7 +103,7 @@ export function Masthead() {
               { t: ", built as a ", v: "off" },
               { t: "Uniswap v4 hook", v: "on" },
               { t: " and live on ", v: "off" },
-              { t: "Aurora, Robinhood Chain, Base and Arbitrum", v: "on" },
+              { t: DEPLOYED_CHAINS, v: "on" },
               { t: ".", v: "green" },
             ]}
           />

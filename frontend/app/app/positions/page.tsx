@@ -9,7 +9,7 @@ import { useHeldPayouts, usePositions, usePositionValue, useTickStatus } from "@
 import { fetchDepositQuote } from "@/lib/hooks/useDepositQuote";
 import { useTokenBalances, useTokenAllowances } from "@/lib/hooks/useTokenBalances";
 import { fmtUSD } from "@/lib/mock/data";
-import { HOOK_LP_ABI, ERC20_ABI, TOKEN_META, lpDeadline } from "@/lib/contracts";
+import { HOOK_LP_ABI, ERC20_ABI, tokenDisplay, lpDeadline } from "@/lib/contracts";
 import { bandLabel } from "@/lib/bands";
 import { explainPoolError } from "@/lib/poolErrors";
 import { DEPLOYMENTS } from "@/lib/crosschain";
@@ -673,7 +673,7 @@ function HeldPayouts({ account, onTxResult }: { account: Address; onTxResult: (r
         </p>
       </div>
       {held.map((h) => {
-        const meta = TOKEN_META[h.token.toLowerCase()];
+        const meta = tokenDisplay(h.chainId, h.token);
         const amount = Number(h.amount) / 10 ** (meta?.decimals ?? 18);
         const onChain = walletChainId === h.chainId;
         return (

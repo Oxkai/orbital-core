@@ -2,7 +2,7 @@
 
 import { useReadContracts } from "wagmi";
 import { type Address } from "viem";
-import { POOL_ABI, TOKEN_META } from "@/lib/contracts";
+import { POOL_ABI, tokenDisplay } from "@/lib/contracts";
 import { PRIMARY_CHAIN_ID } from "@/lib/crosschain";
 import { bandDepegPrice } from "@/lib/bands";
 import { type Pool } from "@/lib/mock/data";
@@ -69,7 +69,7 @@ export function usePool(
   const addressesResolved = tokenAddrs.length > 0 && tokenAddrs.every(a => a.length === 42);
 
   const tokens = tokenAddrs.map(addr => {
-    const meta = TOKEN_META[addr.toLowerCase()] ?? { symbol: addr.slice(0, 6), name: addr, color: "#888", decimals: 18 };
+    const meta = tokenDisplay(chainId, addr) ?? { symbol: addr.slice(0, 6), name: addr, color: "#888", decimals: 18 };
     return { address: addr, symbol: meta.symbol, name: meta.name, color: meta.color, balance: 0 };
   });
 

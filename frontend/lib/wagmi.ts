@@ -38,19 +38,38 @@ export const robinhoodTestnet = defineChain({
   testnet: true,
 });
 
+// Monad testnet. Not in viem's chain list.
+//
+// Monad charges the full gas LIMIT rather than gas used, and `eth_estimateGas`
+// is unreliable here, so anything that signs against this chain should send an
+// explicit limit rather than trust an estimate.
+export const monadTestnet = defineChain({
+  id: 10143,
+  name: "Monad Testnet",
+  nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+  rpcUrls: { default: { http: ["https://testnet-rpc.monad.xyz"] } },
+  blockExplorers: {
+    default: { name: "MonadScan", url: "https://testnet.monadscan.com" },
+  },
+  testnet: true,
+});
+
 // Explorer links are per chain: use `explorerTx` / `explorerAddress` from
 // `lib/crosschain`, which read each deployment's own explorer.
 
-// Robinhood Chain testnet is the primary deployment; Arbitrum Sepolia, Base
-// Sepolia and Ethereum Sepolia carry the same hook. All are same-chain only.
+// Aurora is the primary deployment (see `PRIMARY_CHAIN_ID`); Monad, Robinhood
+// Chain, Base Sepolia and Arbitrum Sepolia carry the same hook. Aurora,
+// Arbitrum and Base are peered for cross-chain intents; Monad and Robinhood
+// have no settler, so they are same-chain only.
 export { arbitrumSepolia, baseSepolia };
 
 export function createWagmiConfig(): Config {
   return createConfig({
-    chains: [auroraTestnet, robinhoodTestnet, baseSepolia, arbitrumSepolia],
+    chains: [auroraTestnet, monadTestnet, robinhoodTestnet, baseSepolia, arbitrumSepolia],
     connectors: [injected(), coinbaseWallet({ appName: "Orbital" })],
     transports: {
       [auroraTestnet.id]: http("https://testnet.aurora.dev"),
+      [monadTestnet.id]: http("https://testnet-rpc.monad.xyz"),
       [arbitrumSepolia.id]: http("https://sepolia-rollup.arbitrum.io/rpc"),
       [robinhoodTestnet.id]: http("https://rpc.testnet.chain.robinhood.com"),
       [baseSepolia.id]: http("https://base-sepolia-rpc.publicnode.com"),

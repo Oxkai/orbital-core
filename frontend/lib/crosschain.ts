@@ -52,6 +52,7 @@ export const BASE_SEPOLIA_ID = 84532;
 
 // Aurora: the EVM on NEAR. Not in viem's chain list.
 export const AURORA_TESTNET_ID = 1313161555;
+export const MONAD_TESTNET_ID = 10143;
 
 export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
   // Generated from orbitalHook/deployments.json - keep the two in step.
@@ -128,6 +129,25 @@ export const DEPLOYMENTS: Record<number, CrossChainDeployment> = {
       USDT:  { symbol: "USDT", address: "0xe574c92e61579b3b77f5491a0c02c57157c915c1", decimals: 6 , index: 3 },
     },
   },
+  [MONAD_TESTNET_ID]: {
+    chainId: MONAD_TESTNET_ID,
+    name: "Monad Testnet",
+    short: "Monad",
+    explorer: "https://testnet.monadscan.com",
+    orbitalHook: "0x2Db3289884D575A7b49374F28d738DBF2dc42a88",
+    poolManager: "0x553Fa9C4040AAb9366C4F9ffB6e31B1Ff415CAF7",
+    swapRouter: "0x43aDE6c9918DeBDE6783E6ed9B9A4745E507383a",
+    quoter: "0x2f7A2DC7d74645A31CABb5466219CCAB70913377",
+    deployBlock: 70679352n,
+    // No settler deployed here, so Monad quotes and trades its own book only.
+    crossChainNote: "Monad testnet has no Orbital settler, so it is same-chain only",
+    assets: {
+      USDC:  { symbol: "USDC", address: "0x0a29619e8580d90b14200a734faad4677e9d1645", decimals: 6 , index: 0 },
+      USDT:  { symbol: "USDT", address: "0x45dc287a307eccf7426cb2377ee2865457592fae", decimals: 6 , index: 1 },
+      FRAX:  { symbol: "FRAX", address: "0x871290c7a788395f1ce5f7cdd69917696e0c352a", decimals: 18, index: 2 },
+      DAI:   { symbol: "DAI", address: "0xc79a946a0a8661cde0cc02a34d387c5b4ccab0e4", decimals: 18, index: 3 },
+    },
+  },
 };
 
 /// The chain the single-chain pages (pools, positions, transactions) default to,
@@ -152,6 +172,7 @@ export const DEFAULT_SWAP_CHAIN_ID = AURORA_TESTNET_ID;
 /// Display order in the token dropdown, primary chain first.
 export const CHAIN_IDS = [
   AURORA_TESTNET_ID,
+  MONAD_TESTNET_ID,
   ROBINHOOD_TESTNET_ID,
   BASE_SEPOLIA_ID,
   ARBITRUM_SEPOLIA_ID,
@@ -382,9 +403,16 @@ export const explorerTx = (chainId: number, hash: string) =>
 export const explorerAddress = (chainId: number, addr: string) =>
   `${DEPLOYMENTS[chainId]?.explorer ?? ""}/address/${addr}`;
 
-/// Display metadata keyed by LOWERCASED token address, across every chain.
+/// Display metadata keyed by `chainId:LOWERCASED address`, across every chain.
 /// Built from the registry so a redeploy cannot leave stale symbols or the
 /// wrong decimals behind.
+///
+/// The chain id is part of the key because an address alone is NOT unique:
+/// the mock tokens were deployed by one account whose nonces ran in step on
+/// several chains, so CREATE handed out identical addresses. Monad's USDC and
+/// Robinhood's USDT are both 0x0a29619e…, and three such pairs exist. Keyed by
+/// address alone, whichever chain came last in `CHAIN_IDS` silently won, and
+/// Monad's pool rendered as "USDT / DAI / FRAX / FRAX".
 export const TOKEN_DISPLAY: Record<string, { symbol: string; name: string; color: string; decimals: number; chainId: number }> = (() => {
   const NAMES: Record<string, string> = {
     USDC: "USD Coin",
@@ -403,7 +431,7 @@ export const TOKEN_DISPLAY: Record<string, { symbol: string; name: string; color
     const dep = DEPLOYMENTS[chainId];
     for (const sym of ROUTABLE_SYMBOLS) {
       const a = dep.assets[sym];
-      out[a.address.toLowerCase()] = {
+      out[`${chainId}:${a.address.toLowerCase()}`] = {
         symbol: sym,
         name: NAMES[sym] ?? sym,
         color: COLORS[sym] ?? "#888",
@@ -414,6 +442,28 @@ export const TOKEN_DISPLAY: Record<string, { symbol: string; name: string; color
   }
   return out;
 })();
+
+/// "a, b, c and d" — an English list, for prose rather than a table.
+export function listAnd(items: readonly string[]): string {
+  if (items.length < 2) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/// Every deployed chain, named for prose with the network tier stripped, so a
+/// sentence does not carry "Testnet" or "Sepolia" five times over. Anywhere
+/// this is used states the testnet caveat once, on its own.
+export const DEPLOYED_CHAINS = listAnd(
+  CHAIN_IDS.map((id) => DEPLOYMENTS[id].name.replace(/ (Testnet|Sepolia)$/, "")),
+);
+
+/// The same list with each chain's full name, for places that must be exact.
+export const DEPLOYED_CHAINS_FULL = listAnd(CHAIN_IDS.map((id) => DEPLOYMENTS[id].name));
+
+/// A token's display metadata on a given chain. Always prefer this to indexing
+/// `TOKEN_DISPLAY` directly, so the chain id cannot be forgotten.
+export function tokenDisplay(chainId: number, address: string) {
+  return TOKEN_DISPLAY[`${chainId}:${address.toLowerCase()}`];
+}
 
 // ─── Pools ───────────────────────────────────────────────────────────────────
 // Every page that lists, reads or scans pools goes through `ALL_POOLS`, so a

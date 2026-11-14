@@ -1,4 +1,5 @@
 import { color, typography } from "@/constants";
+import { DEPLOYED_CHAINS_FULL } from "@/lib/crosschain";
 
 const TEAM = [
   { name: "Ajay Odedra", role: "FOUNDER / ENGINEER", initial: "A" },
@@ -197,7 +198,7 @@ export function Footer() {
           >
             Research implementation of the Paradigm Orbital paper.
             <br />
-            Deployed on Ethereum Sepolia, Base Sepolia, Arbitrum Sepolia and Robinhood Chain testnet. Not production.
+            Deployed on {DEPLOYED_CHAINS_FULL}. Not production.
           </p>
           <p
             style={{
