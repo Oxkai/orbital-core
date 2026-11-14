@@ -1,10 +1,12 @@
-<img src="frontend/public/orbital-mark.svg" width="80" height="80" alt="Orbital" />
-
 # Orbital Hook
 
 **One pool for every stablecoin.** A Uniswap v4 hook that replaces constant-product math with the Orbital sphere/torus curve, so USDC, USDT, DAI and FRAX all trade out of a single shared reserve book instead of six shallow pairs.
 
+Deployed on **Aurora**, NEAR's EVM, and priced from any of 39 chains through **NEAR Intents**.
+
 [**Live app**](https://orbital-hook.vercel.app/) · Aurora (NEAR) · Robinhood Chain · Base Sepolia · Arbitrum Sepolia · 205 tests
+
+<img src="frontend/public/intro.webp" alt="Orbital Hook — A Spherical AMM Engine" />
 
 ---
 
@@ -29,17 +31,27 @@ router, quoter, Permit2 — because none is canonical there. Addresses in
 **NEAR Intents, for arrival.** Orbital prices the swap; NEAR Intents prices the
 journey. A trader holding USDT on Tron does not care what either leg costs, they
 care what arrives. [`/app/arrive`](https://orbital-hook.vercel.app/app/arrive)
-quotes both: Intents over 229 assets on 39 chains, then Orbital's own V4Quoter
+quotes both: Intents over 230+ assets on 39 chains, then Orbital's own V4Quoter
 on the Aurora pool.
 
 ```
-1000 USDC on Arbitrum  ──Intents──►  999.80 USDC on NEAR   (25s)
-                       ──Orbital──►  998.90 DAI on Aurora
-                                     all-in ≈ 11 bps
+  1000.000000 USDC  on Arbitrum          what you hold
+        │
+        ├─ leg 1 · NEAR Intents quotes the journey          ~25s
+        ▼
+   999.794616 USDC  on NEAR
+        │
+        ├─ leg 2 · Orbital quotes the swap, Aurora pool     1bp
+        ▼
+   999.694400 DAI   on Aurora             what you receive
+
+                                          all-in 3.05 bps
 ```
 
-Both numbers come from the systems that would execute them. Nothing is modelled
-by the app.
+One chain, not two options: leg two is quoted with leg one's *output* as its
+input, so the costs add up to the all-in figure. Both numbers come from the
+systems that would execute them — Intents through its solver network, Orbital
+through its own V4Quoter on Aurora. Nothing is modelled by the app.
 
 **Intents quotes are `dry`.** They are priced by the same solver network as a
 real route, but mint no deposit address and request no signature, so nothing in
@@ -50,6 +62,45 @@ the documented way to develop against it.
 does not list Aurora as a destination. So the last hop from NEAR to the Aurora
 pool is NEAR's own bridge and is not part of the Intents quote. The two legs are
 quoted separately because they execute separately.
+
+### Both legs, in one view
+
+[`/app/arrive`](https://orbital-hook.vercel.app/app/arrive) asks each system for
+its own leg and adds them up. Nothing below is drawn by the app: the first
+figure comes from NEAR's solver network, the second from the V4Quoter on the
+Aurora pool.
+
+<img src="frontend/public/screens/arrive.webp" width="100%" alt="Arrive: 105 USDC on Arbitrum quoted through NEAR Intents to NEAR, then through Orbital on Aurora to DAI, 3.39 bps all-in" />
+
+| | |
+|---|---|
+| You hold | 105 USDC on Arbitrum |
+| Leg 1 · NEAR Intents | 104.974902 USDC on NEAR, worth $104.93, ~25s |
+| Leg 2 · Orbital, Aurora | 104.9644 DAI |
+| **All-in** | **3.39 bps** |
+
+The exact figures move between quotes — the Intents leg is priced live by its
+solvers, and the pool's reserves shift as it trades.
+
+### Executed on Aurora
+
+The Aurora pool is not only quoted — it trades. Twelve swaps have settled in it
+since deployment, every one at the 1bp fee the curve promises:
+
+| Swap | Realised cost | Transaction |
+|---|---|---|
+| 1,165.83 FRAX → 1,165.7134 DAI | 1.00 bps | [`0x38908af6…`](https://explorer.testnet.aurora.dev/tx/0x38908af6c9ce81e2b263df3c309ad723aae1b11f68f4c654919bdfffa924bf3a) |
+| 947.01 USDT → 946.9151 FRAX | 1.00 bps | [`0x5212cd5a…`](https://explorer.testnet.aurora.dev/tx/0x5212cd5abdd531b8e445d261dbc8a7ebf3b05defea11ad4f861006f66f924121) |
+| 931.37 USDT → 931.2766 USDC | 1.00 bps | [`0x34050bcc…`](https://explorer.testnet.aurora.dev/tx/0x34050bcc1efaa35f1fa33d37490976ced57dc307d531879a529beb8d715de374) |
+| 210.17 USDC → 210.1490 USDT | 1.00 bps | [`0xcc778863…`](https://explorer.testnet.aurora.dev/tx/0xcc7788636502b2ca1593ee8015b94b3b6d50d5c1ec19adc35c2321472c774bb8) |
+
+Four different asset pairs, one shared book. That is the claim the curve makes,
+settled on chain.
+
+**The Intents leg has no transaction, by construction.** Every quote the app
+asks for is `dry`, so it mints no deposit address and nothing is ever signed —
+and Intents has no testnet to execute against. The quote above is real; the
+settlement is deliberately not.
 
 ### Try it
 
@@ -84,14 +135,17 @@ curl -s -X POST http://localhost:3000/api/intents \
 
 Expect `amountOut` near `999804440` (999.80 USDC) and a `timeEstimate` around
 25 seconds. That is a live route priced by the NEAR Intents solver network, not
-a fixture — `GET /api/intents` returns the 229 assets it can route across 39
-chains.
+a fixture — `GET /api/intents` returns every asset it can route, 230+ of them
+across 39 chains.
 
-**3. The contracts:**
+**3. The contracts.** The suite needs the submodules, so clone with them:
 
 ```sh
-cd orbitalHook && forge test        # 205 tests, including a two-chain fork suite
+git clone --recurse-submodules --branch near-intents https://github.com/Oxkai/orbital-core.git
+cd orbital-core/orbitalHook && forge test   # 205 tests, including a two-chain fork suite
 ```
+
+Already cloned without them? `git submodule update --init --recursive`.
 
 **4. In the browser**, at `http://localhost:3000`:
 
@@ -226,7 +280,7 @@ A v4 pool is always exactly two tokens, so to fit four stablecoins into a single
 
 Six pairs are `PoolKey`s inside the one PoolManager, and every key's `hooks` field points at the same contract, [`OrbitalHook.sol`](orbitalHook/src/OrbitalHook.sol). The PoolManager holds the tokens and the lock; the hook holds the curve and the shared reserves.
 
-![Orbital architecture: Trader/LP, the v4 PoolManager holding the 6 PoolKeys, and the OrbitalHook](frontend/public/archi.png)
+![Orbital architecture: Trader/LP, the v4 PoolManager holding the 6 PoolKeys, and the OrbitalHook](frontend/public/archi.webp)
 
 - **PoolManager** is the v4 singleton. It owns the lock, custody of every real ERC-20, and the deferred-delta ("flash") accounting. The six `PoolKey`s are entries in this one contract, not separate deployments.
 - **OrbitalHook** is our code. It holds the abstract state: the reserve vector $\mathbf{x}$, the ticks, accrued fees, and the soulbound LP shares it issues. It supplies the curve but never custodies real tokens.
@@ -389,7 +443,7 @@ UHI/
 Trade any two of the four stablecoins from one shared pool at close to 1:1. Every pair routes through the same liquidity, and picking a token on another chain turns the same widget into a cross-chain order.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/swap.png" width="100%" alt="Swap" /></td>
+<td width="50%"><img src="frontend/public/screens/swap.webp" width="100%" alt="Swap" /></td>
 </tr>
 
 <tr>
@@ -400,7 +454,7 @@ Trade any two of the four stablecoins from one shared pool at close to 1:1. Ever
 All four stablecoins live in a single shared book. Every pair is a view onto the same reserves, so liquidity never fragments and depth compounds across the whole basket.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/pools.png" width="100%" alt="Pools" /></td>
+<td width="50%"><img src="frontend/public/screens/pools.webp" width="100%" alt="Pools" /></td>
 </tr>
 
 <tr>
@@ -411,7 +465,7 @@ All four stablecoins live in a single shared book. Every pair is a view onto the
 Depth concentrates against the $1 peg where stablecoins actually trade, instead of spreading flat across prices that never happen. That concentration is where the capital efficiency comes from.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/pool-depth.png" width="100%" alt="Liquidity depth chart" /></td>
+<td width="50%"><img src="frontend/public/screens/pool-depth.webp" width="100%" alt="Liquidity depth chart" /></td>
 </tr>
 
 <tr>
@@ -422,7 +476,7 @@ Depth concentrates against the $1 peg where stablecoins actually trade, instead 
 Pick a depeg threshold and your capital concentrates above it. A tighter range earns more fees; a wider range keeps earning through larger moves. Every LP sets their own.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/add-range.png" width="100%" alt="Add liquidity: range" /></td>
+<td width="50%"><img src="frontend/public/screens/add-range.webp" width="100%" alt="Add liquidity: range" /></td>
 </tr>
 
 <tr>
@@ -433,7 +487,7 @@ Pick a depeg threshold and your capital concentrates above it. A tighter range e
 Your deposit splits across all four tokens at the current pool ratio, so you take balanced exposure to the whole basket in one step, with no rebalancing across pairs.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/add-amount.png" width="100%" alt="Add liquidity: amount" /></td>
+<td width="50%"><img src="frontend/public/screens/add-amount.webp" width="100%" alt="Add liquidity: amount" /></td>
 </tr>
 
 <tr>
@@ -444,7 +498,7 @@ Your deposit splits across all four tokens at the current pool ratio, so you tak
 Check the full breakdown (tokens, depeg threshold, fee tier, slippage) and confirm. It settles on-chain in one transaction as a soulbound position the hook issues against that band.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/add-review.png" width="100%" alt="Add liquidity: review" /></td>
+<td width="50%"><img src="frontend/public/screens/add-review.webp" width="100%" alt="Add liquidity: review" /></td>
 </tr>
 
 <tr>
@@ -455,7 +509,18 @@ Check the full breakdown (tokens, depeg threshold, fee tier, slippage) and confi
 Manage everything in one place. Each band you hold is its own share that earns fees independently, and you can increase, decrease, collect, or burn it anytime — during a depeg too.
 
 </td>
-<td width="50%"><img src="frontend/public/screens/positions.png" width="100%" alt="Positions" /></td>
+<td width="50%"><img src="frontend/public/screens/positions.webp" width="100%" alt="Positions" /></td>
+</tr>
+
+<tr>
+<td width="50%" valign="middle">
+
+**Transactions**
+
+Every swap, deposit and fee claim across all pools, with the realised cost of each trade in basis points and a link to the transaction. Read from the subgraph where one exists and straight from the chain's logs where it does not.
+
+</td>
+<td width="50%"><img src="frontend/public/screens/transactions.webp" width="100%" alt="Transactions: live on-chain swap and liquidity activity across all pools" /></td>
 </tr>
 </table>
 

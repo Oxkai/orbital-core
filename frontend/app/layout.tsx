@@ -30,26 +30,26 @@ const geistMono = Geist_Mono({
 
 const SITE_NAME = "Orbital";
 const SITE_URL = "https://orbital-hook.vercel.app";
-const TITLE = "Orbital - Multitoken stablecoin AMM on Arbitrum";
-// ~154x is the Orbital paper's capital-efficiency figure at N=5; keep it in step
-// with the README.
-const DESCRIPTION =
-  "One pool, N stablecoins. A Uniswap v4 hook that trades USDC, USDT, DAI and FRAX out of one shared book on the Orbital sphere, with ~154x the capital efficiency of a full-range pool and automatic depeg isolation. Live on Aurora testnet (the EVM on NEAR), Robinhood Chain testnet, Base Sepolia and Arbitrum Sepolia.";
+const TITLE = "Orbital Hook";
+const DESCRIPTION = "A Spherical AMM Engine";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: TITLE,
   description: DESCRIPTION,
   applicationName: SITE_NAME,
+  // No chain names here either: a deployment list in metadata goes stale on
+  // every redeploy, and the live set is in `orbitalHook/deployments.json`.
   keywords: [
     "Orbital", "Uniswap v4 hook", "stablecoin AMM", "concentrated liquidity",
-    "Aurora", "NEAR", "Base", "Arbitrum", "Robinhood Chain", "DeFi", "N-asset AMM", "depeg isolation", "Paradigm Orbital",
-    "ERC-7683", "cross-chain swaps", "Hyperlane",
+    "DeFi", "N-asset AMM", "depeg isolation", "Paradigm Orbital",
+    "ERC-7683", "cross-chain swaps",
   ],
-  // `images` and `icons` are intentionally omitted: app/opengraph-image.tsx,
-  // app/icon.svg and app/apple-icon.tsx are picked up by Next's file
-  // conventions and wired in automatically, with hashed URLs and correct
-  // dimensions. Declaring them here as well would emit duplicate tags.
+  // `images` and `icons` are intentionally omitted: app/opengraph-image.png,
+  // app/twitter-image.png, app/icon.svg and app/apple-icon.tsx are picked up by
+  // Next's file conventions and wired in automatically, with hashed URLs and
+  // correct dimensions. Declaring them here as well would emit duplicate tags.
+  // Each image's alt text comes from its sibling `.alt.txt`.
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
