@@ -8,19 +8,13 @@ checking that claim, and to seeing what is and is not true of the NEAR work.
 Everything below is a command and the output to expect. Nothing here needs an
 account, a key, or an allowlist.
 
-## Read this branch
+## Cloning
 
-```
-branch:  near-intents
-```
-
-The repository's default branch does **not** contain the NEAR work — it is an
-earlier line of development. Clone the branch above, or you will review the
-wrong tree:
+The default branch carries all of this; `near-intents` is the same commit. A
+plain clone is the right tree:
 
 ```sh
-git clone --recurse-submodules --branch near-intents \
-  https://github.com/Oxkai/orbital-core.git
+git clone --recurse-submodules https://github.com/Oxkai/orbital-core.git
 ```
 
 The submodules matter: `forge-std`, `uniswap-hooks` and `hookmate` are git
@@ -124,7 +118,7 @@ git log --oneline pre-hackathon..hackathon-submission
 `pre-hackathon` is the baseline, last touched 2026-10-14. Everything after it is
 dated 2026-11-09 or later: the Aurora deployment, the NEAR Intents integration
 (`frontend/app/api/intents/`, `frontend/lib/intents/`,
-`frontend/lib/hooks/useIntentsQuote.ts`), the arrival page, and the settler
+`frontend/lib/hooks/useIntentsQuote.ts`), the arrival panel, and the settler
 deployment.
 
 ## Where things live
