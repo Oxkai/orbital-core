@@ -26,6 +26,153 @@ $$x \cdot y = k \quad \longrightarrow \quad \|\mathbf{r} - \mathbf{x}\|^2 = \sum
 
 ---
 
+## What it gives you
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### No fragmentation
+
+Four stablecoins normally need **six separate pools**, each with its own shallow depth. Orbital keeps **one book**: a USDC/FRAX trade draws on exactly the same liquidity as USDC/USDT.
+
+Adding a fifth coin adds a dimension, not a market.
+
+</td>
+<td width="33%" valign="top">
+
+### Low slippage
+
+Liquidity concentrates in the narrow band around $1 where dollars actually change hands, not spread across prices that never occur.
+
+**0.99 bps** all-in on a $1k swap and **1.21 bps** on $100k, fee included, measured on the live $5M pool — and within 0.02 bps of that on all six pairs.
+
+</td>
+<td width="33%" valign="top">
+
+### Deep liquidity
+
+Depth compounds across the whole basket instead of splitting between pairs, and virtual reserves multiply what each real dollar does.
+
+Up to **~154x** the effective depth of a flat pool at N=5, per the Orbital paper.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### Depeg isolation
+
+Each LP sets the depeg they will hold. Cross it and that tick exits to the boundary and stops quoting, so a broken coin cannot drain the LPs who supplied the healthy ones.
+
+This is the tail loss that wrecks flat stable pools.
+
+</td>
+<td valign="top">
+
+### Real stablecoins
+
+USDC and USDT are 6-decimal, DAI and FRAX are 18. The engine runs in WAD and converts only at the token boundary, rounding in the pool's favour every time.
+
+Checked by a 128k-call solvency fuzz on a mixed-decimal pool.
+
+</td>
+<td valign="top">
+
+### Travels well
+
+Because one book holds every asset, any stablecoin is a single hop from any other. That makes the pool unusually cheap to fill against, which the ERC-7683 layer below builds on.
+
+An extension, not the core.
+
+</td>
+</tr>
+</table>
+
+---
+
+## How it compares
+
+| Property | Uniswap v3 | Curve Stable | Balancer | **Orbital** |
+|---|---|---|---|---|
+| Assets per pool | 2 | 2 to 8 (fixed) | 2 to 8 (fixed) | **N (≥ 2)** |
+| Concentrated liquidity | Yes | No | No | **Yes** |
+| Per-LP depeg range | n/a | No | No | **Yes** |
+| Depeg drains pool | n/a | Yes | Yes | **Isolated** |
+| Capital efficiency at peg | High (pair) | ~1 to 2x flat | ~1 to 2x flat | **~154x flat, N=5** |
+| Mixed decimals (6dp + 18dp) | Yes | Yes | Yes | **Yes** |
+| Cross-chain settlement | No | No | No | **ERC-7683** (optional extension) |
+| LP position type | NFT (721) | LP token | LP token | **soulbound 6909** |
+| Venue | Standalone | Standalone | Standalone | **Uniswap v4 hook** |
+
+---
+
+## What we built
+
+We ported the full Orbital math from the paper (the N-sphere invariant, per-tick depeg planes, torus consolidation, and the tick-crossing solver) and run it inside a v4 hook. On every swap `beforeSwap` evaluates that engine and hands back the trade, so any pair prices on the Orbital curve instead of constant-product. It serves both halves of the v4 interface — the trader can fix what they pay or what they receive — so ordinary routers and quoters work against it. v4 still does custody, settlement and accounting.
+
+A v4 pool is always exactly two tokens, so to fit four stablecoins into a single book we register the $\binom{4}{2} = 6$ pairs as six v4 pools and point every `PoolKey.hooks` at the same hook. Those pairs are only views. Behind all of them the hook keeps **one** shared reserve vector, so a trade on USDC/USDT and a trade on DAI/FRAX move the same reserves and the same price.
+
+---
+
+## Architecture
+
+Six pairs are `PoolKey`s inside the one PoolManager, and every key's `hooks` field points at the same contract, [`OrbitalHook.sol`](orbitalHook/src/OrbitalHook.sol). The PoolManager holds the tokens and the lock; the hook holds the curve and the shared reserves.
+
+![Orbital architecture: Trader/LP, the v4 PoolManager holding the 6 PoolKeys, and the OrbitalHook](frontend/public/archi.webp)
+
+- **PoolManager** is the v4 singleton. It owns the lock, custody of every real ERC-20, and the deferred-delta ("flash") accounting. The six `PoolKey`s are entries in this one contract, not separate deployments.
+- **OrbitalHook** is our code. It holds the abstract state: the reserve vector $\mathbf{x}$, the ticks, accrued fees, and the soulbound LP shares it issues. It supplies the curve but never custodies real tokens.
+- **Trader and LP.** A trader reaches the pool through any v4 router. An LP calls the hook directly (`addLiquidity`, `removeLiquidity`, `collect`) and the hook runs the `unlock` on their behalf.
+
+### Token custody: two claim ledgers
+
+This is the part that is easy to get wrong, so it is worth being precise. There are two separate claim ledgers and they mean different things.
+
+1. **PoolManager claim tokens, held by the hook.** Real ERC-20s always sit in the PoolManager. When value flows in, the hook turns its positive balance-delta into PoolManager claim tokens (`poolManager.mint(address(this), ...)`), a redeemable IOU against the singleton's custody. To pay out it burns them and the PoolManager releases the underlying.
+2. **OrbitalHook LP shares, held by the LP.** The hook keeps its own ERC-6909-shaped ledger with `tokenId = band`, one of a fixed menu of 31 depeg bands. Adding liquidity mints a share of that band's tick, and repeat deposits into a band grow the same position. These are soulbound and are how the hook tracks who owns what, alongside per-position fee checkpoints. No real token ever sits here.
+
+All of it happens inside one `unlock` frame. Balances move only as deltas in transient storage, and `unlock` refuses to return until every currency delta nets to zero.
+
+### LP path
+
+```
+LP ─► hook.addLiquidity(band, r, maxAmounts, deadline)
+        └─ poolManager.unlock(MINT, ...)
+             └─ unlockCallback (only callable by PoolManager):
+                  • compute deposit amounts for radius r
+                  • update reserves / sumX / sumXSq / rInt   (the torus)
+                  • per asset: settle()  ← pull the LP's ERC-20 in
+                               mint()    → convert +delta to claim tokens
+                  • verify the balance actually landed  (TokenTransferShortfall)
+                  • check the sphere invariant           (revert if broken)
+                  • _mint(LP, band, rWad)                → issue the LP share
+        unlock returns only once every delta == 0
+```
+
+`removeLiquidity` and `collect` run the same flow in reverse. Pausing never blocks either path, so LPs can always exit.
+
+---
+
+## Runtime: one swap
+
+```
+caller.unlock(data)
+└─ PoolManager unlocks, calls back ────────────────┐
+   unlockCallback(data):                           │  runs inside the lock
+     swap(poolKey, params)                         │
+       ├─ beforeSwap → Orbital BeforeSwapDelta     │  (default x·y math bypassed)
+       └─ records currency deltas (no tokens move) │
+     settle()  ← trader pays input
+     take()    ← trader pulls output
+└─ unlock returns ─────────────────────────────────┘
+   PoolManager asserts every delta == 0  (else revert)
+```
+
+`beforeSwap` runs the Orbital engine and returns a `BeforeSwapDelta` that fully specifies the trade, so the PoolManager's default `x·y` math never executes. Two invariants hold throughout: `swap` moves no tokens, and `unlock` will not return until every delta is zero.
+
+---
+
 ## On NEAR
 
 Orbital's primary deployment is **Aurora**, the EVM that runs on NEAR. The hook
@@ -200,153 +347,6 @@ Libraries used, per the entry rules: Uniswap v4 (core and periphery),
 OpenZeppelin Contracts and uniswap-hooks, solmate, hookmate, Foundry and
 forge-std on the contract side; Next.js, React, wagmi, viem and TanStack Query
 on the frontend. The Orbital math libraries are mine and are baseline.
-
----
-
-## What it gives you
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-### No fragmentation
-
-Four stablecoins normally need **six separate pools**, each with its own shallow depth. Orbital keeps **one book**: a USDC/FRAX trade draws on exactly the same liquidity as USDC/USDT.
-
-Adding a fifth coin adds a dimension, not a market.
-
-</td>
-<td width="33%" valign="top">
-
-### Low slippage
-
-Liquidity concentrates in the narrow band around $1 where dollars actually change hands, not spread across prices that never occur.
-
-**0.99 bps** all-in on a $1k swap and **1.21 bps** on $100k, fee included, measured on the live $5M pool — and within 0.02 bps of that on all six pairs.
-
-</td>
-<td width="33%" valign="top">
-
-### Deep liquidity
-
-Depth compounds across the whole basket instead of splitting between pairs, and virtual reserves multiply what each real dollar does.
-
-Up to **~154x** the effective depth of a flat pool at N=5, per the Orbital paper.
-
-</td>
-</tr>
-<tr>
-<td valign="top">
-
-### Depeg isolation
-
-Each LP sets the depeg they will hold. Cross it and that tick exits to the boundary and stops quoting, so a broken coin cannot drain the LPs who supplied the healthy ones.
-
-This is the tail loss that wrecks flat stable pools.
-
-</td>
-<td valign="top">
-
-### Real stablecoins
-
-USDC and USDT are 6-decimal, DAI and FRAX are 18. The engine runs in WAD and converts only at the token boundary, rounding in the pool's favour every time.
-
-Checked by a 128k-call solvency fuzz on a mixed-decimal pool.
-
-</td>
-<td valign="top">
-
-### Travels well
-
-Because one book holds every asset, any stablecoin is a single hop from any other. That makes the pool unusually cheap to fill against, which the ERC-7683 layer below builds on.
-
-An extension, not the core.
-
-</td>
-</tr>
-</table>
-
----
-
-## What we built
-
-We ported the full Orbital math from the paper (the N-sphere invariant, per-tick depeg planes, torus consolidation, and the tick-crossing solver) and run it inside a v4 hook. On every swap `beforeSwap` evaluates that engine and hands back the trade, so any pair prices on the Orbital curve instead of constant-product. It serves both halves of the v4 interface — the trader can fix what they pay or what they receive — so ordinary routers and quoters work against it. v4 still does custody, settlement and accounting.
-
-A v4 pool is always exactly two tokens, so to fit four stablecoins into a single book we register the $\binom{4}{2} = 6$ pairs as six v4 pools and point every `PoolKey.hooks` at the same hook. Those pairs are only views. Behind all of them the hook keeps **one** shared reserve vector, so a trade on USDC/USDT and a trade on DAI/FRAX move the same reserves and the same price.
-
----
-
-## Architecture
-
-Six pairs are `PoolKey`s inside the one PoolManager, and every key's `hooks` field points at the same contract, [`OrbitalHook.sol`](orbitalHook/src/OrbitalHook.sol). The PoolManager holds the tokens and the lock; the hook holds the curve and the shared reserves.
-
-![Orbital architecture: Trader/LP, the v4 PoolManager holding the 6 PoolKeys, and the OrbitalHook](frontend/public/archi.webp)
-
-- **PoolManager** is the v4 singleton. It owns the lock, custody of every real ERC-20, and the deferred-delta ("flash") accounting. The six `PoolKey`s are entries in this one contract, not separate deployments.
-- **OrbitalHook** is our code. It holds the abstract state: the reserve vector $\mathbf{x}$, the ticks, accrued fees, and the soulbound LP shares it issues. It supplies the curve but never custodies real tokens.
-- **Trader and LP.** A trader reaches the pool through any v4 router. An LP calls the hook directly (`addLiquidity`, `removeLiquidity`, `collect`) and the hook runs the `unlock` on their behalf.
-
-### Token custody: two claim ledgers
-
-This is the part that is easy to get wrong, so it is worth being precise. There are two separate claim ledgers and they mean different things.
-
-1. **PoolManager claim tokens, held by the hook.** Real ERC-20s always sit in the PoolManager. When value flows in, the hook turns its positive balance-delta into PoolManager claim tokens (`poolManager.mint(address(this), ...)`), a redeemable IOU against the singleton's custody. To pay out it burns them and the PoolManager releases the underlying.
-2. **OrbitalHook LP shares, held by the LP.** The hook keeps its own ERC-6909-shaped ledger with `tokenId = band`, one of a fixed menu of 31 depeg bands. Adding liquidity mints a share of that band's tick, and repeat deposits into a band grow the same position. These are soulbound and are how the hook tracks who owns what, alongside per-position fee checkpoints. No real token ever sits here.
-
-All of it happens inside one `unlock` frame. Balances move only as deltas in transient storage, and `unlock` refuses to return until every currency delta nets to zero.
-
-### LP path
-
-```
-LP ─► hook.addLiquidity(band, r, maxAmounts, deadline)
-        └─ poolManager.unlock(MINT, ...)
-             └─ unlockCallback (only callable by PoolManager):
-                  • compute deposit amounts for radius r
-                  • update reserves / sumX / sumXSq / rInt   (the torus)
-                  • per asset: settle()  ← pull the LP's ERC-20 in
-                               mint()    → convert +delta to claim tokens
-                  • verify the balance actually landed  (TokenTransferShortfall)
-                  • check the sphere invariant           (revert if broken)
-                  • _mint(LP, band, rWad)                → issue the LP share
-        unlock returns only once every delta == 0
-```
-
-`removeLiquidity` and `collect` run the same flow in reverse. Pausing never blocks either path, so LPs can always exit.
-
----
-
-## Runtime: one swap
-
-```
-caller.unlock(data)
-└─ PoolManager unlocks, calls back ────────────────┐
-   unlockCallback(data):                           │  runs inside the lock
-     swap(poolKey, params)                         │
-       ├─ beforeSwap → Orbital BeforeSwapDelta     │  (default x·y math bypassed)
-       └─ records currency deltas (no tokens move) │
-     settle()  ← trader pays input
-     take()    ← trader pulls output
-└─ unlock returns ─────────────────────────────────┘
-   PoolManager asserts every delta == 0  (else revert)
-```
-
-`beforeSwap` runs the Orbital engine and returns a `BeforeSwapDelta` that fully specifies the trade, so the PoolManager's default `x·y` math never executes. Two invariants hold throughout: `swap` moves no tokens, and `unlock` will not return until every delta is zero.
-
----
-
-## How it compares
-
-| Property | Uniswap v3 | Curve Stable | Balancer | **Orbital** |
-|---|---|---|---|---|
-| Assets per pool | 2 | 2 to 8 (fixed) | 2 to 8 (fixed) | **N (≥ 2)** |
-| Concentrated liquidity | Yes | No | No | **Yes** |
-| Per-LP depeg range | n/a | No | No | **Yes** |
-| Depeg drains pool | n/a | Yes | Yes | **Isolated** |
-| Capital efficiency at peg | High (pair) | ~1 to 2x flat | ~1 to 2x flat | **~154x flat, N=5** |
-| Mixed decimals (6dp + 18dp) | Yes | Yes | Yes | **Yes** |
-| Cross-chain settlement | No | No | No | **ERC-7683** (optional extension) |
-| LP position type | NFT (721) | LP token | LP token | **soulbound 6909** |
-| Venue | Standalone | Standalone | Standalone | **Uniswap v4 hook** |
 
 ---
 
