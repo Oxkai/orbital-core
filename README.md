@@ -30,7 +30,7 @@ router, quoter, Permit2 — because none is canonical there. Addresses in
 
 **NEAR Intents, for arrival.** Orbital prices the swap; NEAR Intents prices the
 journey. A trader holding USDT on Tron does not care what either leg costs, they
-care what arrives. [`/app/arrive`](https://orbital-hook.vercel.app/app/arrive)
+care what arrives. The [**Arrive** tab](https://orbital-hook.vercel.app/app/swap?tab=arrive)
 quotes both: Intents over 230+ assets on 39 chains, then Orbital's own V4Quoter
 on the Aurora pool.
 
@@ -65,7 +65,7 @@ quoted separately because they execute separately.
 
 ### Both legs, in one view
 
-[`/app/arrive`](https://orbital-hook.vercel.app/app/arrive) asks each system for
+The [**Arrive** tab](https://orbital-hook.vercel.app/app/swap?tab=arrive) asks each system for
 its own leg and adds them up. Nothing below is drawn by the app: the first
 figure comes from NEAR's solver network, the second from the V4Quoter on the
 Aurora pool.
@@ -149,7 +149,7 @@ Already cloned without them? `git submodule update --init --recursive`.
 
 **4. In the browser**, at `http://localhost:3000`:
 
-- `/app/arrive` — pick a chain and an asset, see both legs quoted and the
+- `/app/swap`, **Arrive** tab — pick a chain and an asset, see both legs quoted and the
   all-in cost.
 - `/app/swap` — connect any wallet, switch to Aurora testnet, take gas from the
   Aurora faucet, then mint test stablecoins. The mocks expose a public
@@ -173,7 +173,7 @@ Uniswap v4 integration were built earlier in 2026 and are baseline.
 Built inside the hackathon window: the Aurora deployment and everything it
 needed, the NEAR Intents integration (`frontend/app/api/intents/`,
 `frontend/lib/intents/`, `frontend/lib/hooks/useIntentsQuote.ts`), the
-`/app/arrive` page, and the cross-chain settler deployment.
+arrival tab, and the cross-chain settler deployment.
 
 The split is tagged, not claimed. `pre-hackathon` marks the baseline, last
 touched 2026-10-14; `hackathon-submission` marks the work, every commit of it

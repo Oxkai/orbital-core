@@ -18,11 +18,12 @@
  * each widget inside its own header row, so the pair costs one bar of chrome
  * rather than two stacked ones.
  *
- * `/app/swap` and `/app/arrive` both render this, each opening on its own tab,
- * so either URL still lands where it says it does.
+ * `/app/swap?tab=arrive` opens on the arrival tab, so a link can still point
+ * straight at it now that it has no route of its own.
  */
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { ArrivePanel } from "@/components/app/arrive/ArrivePanel";
 import { SwapWidget } from "@/components/app/swap/SwapWidget";
@@ -31,7 +32,11 @@ import type { SwapTab } from "@/components/app/swap/TabStrip";
 export type { SwapTab };
 
 export function SwapTabs({ initial = "swap" }: { initial?: SwapTab }) {
-  const [tab, setTab] = useState<SwapTab>(initial);
+  // `?tab=arrive` opens on the arrival tab. Read once, for the initial state
+  // only: after that the tab is the user's to change, and rewriting the URL on
+  // every click would put a history entry behind each one.
+  const fromUrl = useSearchParams().get("tab");
+  const [tab, setTab] = useState<SwapTab>(fromUrl === "arrive" ? "arrive" : initial);
 
   // Both stay mounted: switching tabs must not re-fetch the 229-asset Intents
   // list, nor discard a quote the user is part-way through reading.

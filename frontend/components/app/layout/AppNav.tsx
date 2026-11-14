@@ -9,8 +9,8 @@ import { color, typography } from "@/constants";
 import { List as Menu, X, MagnifyingGlass } from "@phosphor-icons/react";
 
 // Arrive is a tab inside the swap widget, not a destination of its own, so it
-// is not listed here. `/app/arrive` still resolves — it renders the same page
-// with that tab open — because the README links it.
+// is not listed here. A link can still point straight at it with
+// `/app/swap?tab=arrive`.
 const LINKS = [
   { href: "/app/swap",         label: "Swap"         },
   { href: "/app/pools",        label: "Pools"        },

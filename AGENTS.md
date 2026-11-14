@@ -67,7 +67,7 @@ figure moves — it is priced by NEAR's solver network in real time, not a
 fixture. `GET /api/intents` returns the full routable asset list, 230-odd
 assets across 39 chains.
 
-Both legs together are at `http://localhost:3000/app/arrive`, which quotes the
+Both legs together are at `http://localhost:3000/app/swap?tab=arrive`, which quotes the
 Intents journey and the Orbital swap and adds them into one all-in cost.
 
 ### 3. The engine is correct — ~4 minutes

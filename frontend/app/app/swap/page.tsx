@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { SwapTabs } from "@/components/app/swap/SwapTabs";
 import { AsciiBackground } from "@/components/app/shared/AsciiBackground";
 
@@ -19,7 +21,9 @@ export default function SwapPage() {
       </div>
 
       <div className="relative z-10 w-full max-w-md px-4 sm:px-0">
-        <SwapTabs initial="swap" />
+        <Suspense fallback={null}>
+          <SwapTabs initial="swap" />
+        </Suspense>
       </div>
     </section>
   );
